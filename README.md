@@ -1,49 +1,41 @@
-# Resort Map Builder
+# Resort Map Builder · Parte 3
 
-## Parte 2
+Esta etapa convierte la escena de la Parte 2 en un pequeño constructor 3D de edificios.
 
-Esta etapa crea el espacio de trabajo tridimensional del proyecto.
+## Archivos que debes reemplazar en GitHub
 
-### Archivos
+- `index.html`
+- `style.css`
+- `app.js`
 
-- `index.html`: estructura de la interfaz.
-- `style.css`: apariencia y adaptación a distintas pantallas.
-- `app.js`: escena Three.js, cámara, cuadrícula y controles.
-- `README.md`: notas del proyecto.
+## Funciones nuevas
 
-### Qué incluye esta etapa
+- Crear edificios.
+- Seleccionar edificios desde el plano.
+- Seleccionarlos también desde una lista.
+- Mover en X/Y/Z.
+- Rotar.
+- Escalar.
+- Cambiar ancho, altura y largo con valores numéricos.
+- Cambiar posición con valores numéricos.
+- Cambiar giro Y con grados.
+- Renombrar.
+- Duplicar.
+- Eliminar.
+- Caja visual de selección.
+- TransformControls integrado con MapControls.
+- Atajos:
+  - `W`: mover.
+  - `E`: rotar.
+  - `R`: escalar.
+  - `Esc`: deseleccionar.
+  - `Delete/Backspace`: eliminar.
+  - `Ctrl/Cmd + D`: duplicar.
 
-- Plano 3D base.
-- Cuadrícula editable.
-- Cámara inclinada.
-- Zoom.
-- Paneo.
-- Rotación.
-- Vista superior.
-- Restablecer/centrar vista.
-- Control de opacidad del plano.
-- Control de opacidad de la cuadrícula.
-- Mostrar/ocultar cuadrícula.
-- Panel plegable.
-- Compatibilidad táctil.
-- Límite de pixel ratio para evitar carga innecesaria.
+## Escala
 
-### Three.js
+En esta versión usamos la convención:
 
-Esta versión usa Three.js `0.186.0` mediante import map y CDN.
+`1 unidad 3D = 1 metro`
 
-### GitHub Pages
-
-Los archivos están pensados para estar juntos en la raíz del repositorio:
-
-```text
-/
-├── index.html
-├── style.css
-├── app.js
-├── README.md
-├── assets/
-└── data/
-```
-
-No borres todavía `assets/` ni `data/`. Se usarán en etapas posteriores.
+Esto será útil más adelante para rutas y distancias.
