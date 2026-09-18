@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 /*
-  Parte 4 · Biblioteca procedural ligera.
+  Parte 5 · Biblioteca procedural ligera.
 
   Cada prop se construye con geometrías sencillas de Three.js.
   No se descargan modelos externos, por lo que el repositorio sigue liviano.

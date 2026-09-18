@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 4 corregida para escritorio y móvil."
+    content="Resort Map Builder · Parte 5 · colocación múltiple dinámica sobre la cuadrícula."
   />
-  <title>Resort Map Builder · Parte 4</title>
+  <title>Resort Map Builder · Parte 5</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=4.1" />
+  <link rel="stylesheet" href="./style.css?v=5.0" />
 
   <script type="importmap">
   {
@@ -60,12 +60,71 @@
         <span id="objectCounterBadge">0 objetos</span>
       </div>
 
+      <div
+        class="placement-toolbar hidden"
+        id="placementToolbar"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="placement-copy">
+          <span class="placement-kicker">COLOCANDO</span>
+          <strong id="placementLabel">Objeto</strong>
+          <span id="placementCount">0 colocados</span>
+        </div>
+
+        <button
+          class="placement-finish"
+          id="placementFinish"
+          type="button"
+          aria-label="Terminar colocación"
+          title="Terminar colocación"
+        >
+          ✓
+        </button>
+      </div>
+
+      <!-- ACCIONES RÁPIDAS DE LA SELECCIÓN -->
+      <div class="selection-toolbar hidden" id="selectionToolbar" aria-label="Acciones rápidas del objeto seleccionado">
+        <span class="selection-toolbar-name" id="quickSelectionName">Objeto</span>
+
+        <button
+          class="quick-action"
+          id="quickLock"
+          type="button"
+          aria-pressed="false"
+          title="Bloquear objeto"
+        >
+          <span id="quickLockIcon" aria-hidden="true">🔓</span>
+          <span id="quickLockText">Bloquear</span>
+        </button>
+
+        <button
+          class="quick-action quick-action-duplicate"
+          id="quickDuplicate"
+          type="button"
+          title="Duplicar objeto"
+        >
+          <span aria-hidden="true">⧉</span>
+          <span>Duplicar</span>
+        </button>
+
+        <button
+          class="quick-action danger"
+          id="quickDelete"
+          type="button"
+          title="Eliminar objeto"
+        >
+          <span aria-hidden="true">⌫</span>
+          <span>Eliminar</span>
+        </button>
+      </div>
+
       <!-- BIBLIOTECA -->
       <aside class="panel library-panel" id="libraryPanel" aria-label="Biblioteca de objetos">
         <div class="panel-heading">
           <div>
             <span class="panel-kicker">BIBLIOTECA</span>
-            <strong>Añadir al plano</strong>
+            <strong>Añadir al plano</strong><small class="panel-subcopy">Elige un tipo y toca la cuadrícula todas las veces que quieras.</small>
           </div>
           <button class="panel-close" type="button" data-close-panel aria-label="Cerrar biblioteca">×</button>
         </div>
@@ -188,19 +247,43 @@
           </div>
 
           <div class="section-label">Posición</div>
-          <div class="field-grid">
-            <label class="field">
-              <span>X</span>
-              <input id="positionX" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
+          <div class="position-sliders">
+            <label class="slider-field">
+              <span class="slider-field-head">
+                <span>Eje X</span>
+                <strong id="positionXValue">0.0 m</strong>
+              </span>
+              <input id="positionX" type="range" min="-70" max="70" step="0.25" value="0" />
             </label>
-            <label class="field">
-              <span>Y</span>
-              <input id="positionY" type="number" min="-50" max="120" step="0.1" inputmode="decimal" />
+
+            <label class="slider-field" id="positionYField">
+              <span class="slider-field-head">
+                <span>Altura Y</span>
+                <strong id="positionYValue">0.0 m</strong>
+              </span>
+              <input id="positionY" type="range" min="-5" max="40" step="0.25" value="0" />
             </label>
-            <label class="field">
-              <span>Z</span>
-              <input id="positionZ" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
+
+            <label class="slider-field">
+              <span class="slider-field-head">
+                <span>Eje Z</span>
+                <strong id="positionZValue">0.0 m</strong>
+              </span>
+              <input id="positionZ" type="range" min="-70" max="70" step="0.25" value="0" />
             </label>
+          </div>
+
+          <div class="section-label">Apariencia</div>
+          <label class="slider-field">
+            <span class="slider-field-head">
+              <span>Opacidad del objeto</span>
+              <strong id="objectOpacityValue">100%</strong>
+            </span>
+            <input id="objectOpacity" type="range" min="15" max="100" step="5" value="100" />
+          </label>
+
+          <div class="locked-note hidden" id="lockedNote">
+            🔒 Objeto bloqueado. Desbloquéalo arriba para moverlo, rotarlo o cambiar sus dimensiones.
           </div>
 
           <div class="section-label">Rotación</div>
@@ -292,6 +375,7 @@
         <span><b>E:</b> rotar</span>
         <span><b>R:</b> escalar</span>
         <span><b>Ctrl/Cmd + D:</b> duplicar</span>
+        <span><b>Colocar:</b> toca el plano · ✓ termina</span>
       </div>
 
       <div class="fatal-error" id="fatalError" role="alert">
@@ -303,12 +387,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 4.1 · Interfaz corregida</span>
+      <span>Parte 5 · Colocación múltiple dinámica</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=4.1"></script>
+  <script type="module" src="./app.js?v=5.0"></script>
 </body>
 </html>

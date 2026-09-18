@@ -1,10 +1,39 @@
-# Resort Map Builder · Parte 4.1 corregida
+# Resort Map Builder · Parte 5
 
-Esta versión corrige el problema móvil visto en iPhone.
+Esta versión parte directamente de la **4.2 corregida** y no elimina ninguna de sus funciones.
 
-## IMPORTANTE
+## Nuevo: colocación múltiple
 
-Sube **todos** estos archivos a la raíz del repositorio:
+Flujo:
+
+1. Abre `Props`.
+2. Toca `Palmera`, `Árbol`, `Edificio`, etc.
+3. El panel se cierra automáticamente.
+4. Aparece una barra arriba con el tipo elegido, cuántos llevas y `✓`.
+5. Toca una parte de la cuadrícula para colocar el objeto.
+6. Puedes seguir tocando para colocar más del mismo tipo.
+7. Pulsa `✓` cuando termines.
+8. El último objeto queda seleccionado y vuelven las herramientas normales.
+
+Para colocar solo uno:
+
+`Props → objeto → tocar una vez → ✓`
+
+## Se conserva de 4.2
+
+- Bloquear / desbloquear.
+- Eliminar y duplicar desde la barra rápida.
+- Sliders de posición.
+- Opacidad individual.
+- Propiedades.
+- Vista 3D.
+- Vista desde arriba.
+- Opacidad del plano y de la retícula.
+- Panel móvil Props / Objetos / Editar / Vista.
+- Selección de Objetos cierra el panel.
+- Colores por familia.
+
+## Archivos
 
 ```text
 /
@@ -13,35 +42,17 @@ Sube **todos** estos archivos a la raíz del repositorio:
 ├── app.js
 ├── props.js
 ├── ui.js
+├── placement.js
 └── README.md
 ```
 
-No hace falta crear la carpeta `src` en esta revisión. `props.js` y `ui.js` están en la raíz para que sea más fácil subirlos desde GitHub móvil.
+`placement.js` es nuevo y solo administra el modo de colocación.
 
-## Qué se corrigió
+## Detalles
 
-- Biblioteca de props siempre accesible en móvil.
-- Lista de objetos accesible.
-- Panel de propiedades accesible.
-- Panel de vista accesible.
-- Botón `Vista 3D`.
-- Botón `Desde arriba`.
-- Opacidad de retícula.
-- Opacidad del plano.
-- Mostrar/ocultar retícula.
-- Barra inferior móvil con Props / Objetos / Editar / Vista.
-- Paneles convertidos en cajones en iPhone para no tapar permanentemente el plano.
-- Se añadió cache-busting `?v=4.1` para evitar que Safari/GitHub Pages reutilicen `style.css` o `app.js` antiguos.
-- Se mantiene el sistema de edificios y todos los props de la Parte 4.
-
-## Señal de que JavaScript cargó correctamente
-
-Al abrir la página debe aparecer un `Edificio 1` en el centro del plano.
-
-Si el plano aparece vacío, significa que falta alguno de estos archivos:
-
-- `app.js`
-- `props.js`
-- `ui.js`
-
-o que GitHub Pages todavía está publicando una versión anterior.
+- El punto se calcula mediante raycasting contra el plano.
+- La colocación queda dentro de la cuadrícula de 140 × 140 m.
+- Arrastrar la cámara no crea objetos.
+- Solo un toque/clic corto coloca.
+- `Esc` termina el modo.
+- Elegir Mover / Rotar / Escalar termina el modo primero.

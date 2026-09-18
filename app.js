@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=4.1";
-import { setupMobilePanels } from "./ui.js?v=4.1";
+import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=5.0";
+import { setupMobilePanels } from "./ui.js?v=5.0";
+import { createPlacementController } from "./placement.js?v=5.0";
 
 window.__RMB_READY__ = false;
 
@@ -12,6 +13,19 @@ const statusDot = document.querySelector("#statusDot");
 const statusText = document.querySelector("#statusText");
 const selectionStatus = document.querySelector("#selectionStatus");
 const objectCounterBadge = document.querySelector("#objectCounterBadge");
+
+const selectionToolbar = document.querySelector("#selectionToolbar");
+const quickSelectionName = document.querySelector("#quickSelectionName");
+const quickLockButton = document.querySelector("#quickLock");
+const quickLockIcon = document.querySelector("#quickLockIcon");
+const quickLockText = document.querySelector("#quickLockText");
+const quickDuplicateButton = document.querySelector("#quickDuplicate");
+const quickDeleteButton = document.querySelector("#quickDelete");
+
+const placementToolbar = document.querySelector("#placementToolbar");
+const placementLabel = document.querySelector("#placementLabel");
+const placementCount = document.querySelector("#placementCount");
+const placementFinishButton = document.querySelector("#placementFinish");
 
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
@@ -37,6 +51,15 @@ const uniformSizeValue = document.querySelector("#uniformSizeValue");
 const positionXInput = document.querySelector("#positionX");
 const positionYInput = document.querySelector("#positionY");
 const positionZInput = document.querySelector("#positionZ");
+const positionXValue = document.querySelector("#positionXValue");
+const positionYValue = document.querySelector("#positionYValue");
+const positionZValue = document.querySelector("#positionZValue");
+const positionYField = document.querySelector("#positionYField");
+
+const objectOpacityInput = document.querySelector("#objectOpacity");
+const objectOpacityValue = document.querySelector("#objectOpacityValue");
+const lockedNote = document.querySelector("#lockedNote");
+
 const rotationYInput = document.querySelector("#rotationY");
 
 const duplicateButton = document.querySelector("#duplicateObject");
@@ -56,8 +79,8 @@ const gridToggle = document.querySelector("#gridToggle");
 const INITIAL_CAMERA = new THREE.Vector3(42, 36, 48);
 const INITIAL_TARGET = new THREE.Vector3(0, 0, 0);
 
-const BUILDING_COLOR = 0xd9d2c5;
-const BUILDING_EDGE_COLOR = 0x716d66;
+const BUILDING_COLOR = 0xc9cbc8;
+const BUILDING_EDGE_COLOR = 0x666a68;
 const SELECTED_EDGE_COLOR = 0x171717;
 
 const state = {
@@ -83,6 +106,8 @@ let transformHelper;
 let ground;
 let grid;
 let selectionBox;
+let mobilePanels;
+let placementController;
 let resizeObserver;
 let animationFrame = 0;
 let isPageVisible = true;
@@ -141,6 +166,83 @@ function objectKindLabel(object) {
   return (PROP_CATALOG[object.userData.propType]?.label || "PROP").toUpperCase();
 }
 
+function isLocked(object) {
+  return Boolean(object?.userData?.locked);
+}
+
+function formatMeters(value) {
+  const rounded = Math.round(value * 4) / 4;
+  return `${rounded.toFixed(rounded % 1 === 0 ? 1 : 2)} m`;
+}
+
+function getObjectOpacity(object) {
+  const value = Number(object?.userData?.opacity);
+  return Number.isFinite(value) ? clamp(value, 0.15, 1) : 1;
+}
+
+function ensureLocalMaterials(object) {
+  object.traverse((child) => {
+    if (!child.material || child.userData.editorMaterialLocal) return;
+
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((material) => material.clone());
+    } else {
+      child.material = child.material.clone();
+    }
+
+    child.userData.editorMaterialLocal = true;
+  });
+}
+
+function setObjectOpacity(object, value) {
+  if (!object) return;
+
+  const opacity = clamp(value, 0.15, 1);
+  object.userData.opacity = opacity;
+
+  ensureLocalMaterials(object);
+
+  object.traverse((child) => {
+    if (!child.material) return;
+
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+
+    for (const material of materials) {
+      material.transparent = opacity < 0.999;
+      material.opacity = opacity;
+      material.depthWrite = opacity >= 0.999;
+      material.needsUpdate = true;
+    }
+  });
+}
+
+function setObjectLocked(object, locked) {
+  if (!object) return;
+
+  object.userData.locked = Boolean(locked);
+
+  if (object === state.selected) {
+    if (locked) {
+      transformControls.detach();
+    } else {
+      transformControls.attach(object);
+      configureTransformForSelection();
+    }
+
+    updateSelectionBox();
+    updatePropertiesFromSelection();
+  }
+
+  refreshSceneList();
+}
+
+function toggleSelectedLock() {
+  if (!state.selected) return;
+  setObjectLocked(state.selected, !isLocked(state.selected));
+}
+
 function showFatalError(message) {
   if (fatalMessage) fatalMessage.textContent = message;
   fatalError?.classList.add("visible");
@@ -185,7 +287,23 @@ function createScene() {
 
   resizeViewport();
   installEvents();
-  setupMobilePanels();
+  mobilePanels = setupMobilePanels();
+
+  placementController = createPlacementController({
+    toolbar: placementToolbar,
+    label: placementLabel,
+    count: placementCount,
+    finishButton: placementFinishButton,
+    onFinish: ({ lastObject }) => {
+      renderer.domElement.classList.remove("placement-active");
+
+      if (lastObject && state.objects.includes(lastObject)) {
+        selectObject(lastObject);
+      } else {
+        updatePropertiesFromSelection();
+      }
+    },
+  });
 
   // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
   createBuilding({
@@ -323,6 +441,8 @@ function createBuilding({
 
   object.userData.editorType = "building";
   object.userData.scalePolicy = "free";
+  object.userData.locked = false;
+  object.userData.opacity = 1;
   object.userData.id = makeId("building");
   object.name = name || `Edificio ${state.nextBuildingNumber++}`;
   object.scale.set(
@@ -368,6 +488,8 @@ function createEditorProp(type, {
 } = {}) {
   const object = createProp(type);
   object.userData.id = makeId(type);
+  object.userData.locked = false;
+  object.userData.opacity = 1;
   object.name = name || nextPropName(type);
   object.position.set(x, 0, z);
   object.rotation.y = rotationY;
@@ -383,24 +505,50 @@ function createEditorProp(type, {
   return object;
 }
 
-function createFromLibrary(type) {
-  const center = mapControls.target;
-
+function placementTypeLabel(type) {
   if (type === "building") {
-    createBuilding({
-      x: center.x,
-      y: 1.5,
-      z: center.z,
-      select: true,
-    });
-    return;
+    return "Edificio";
   }
 
-  createEditorProp(type, {
-    x: center.x,
-    z: center.z,
-    select: true,
+  return PROP_CATALOG[type]?.label || "Objeto";
+}
+
+function startPlacementMode(type) {
+  if (!type) return;
+
+  state.selected = null;
+  transformControls.detach();
+  removeSelectionBox();
+  refreshSceneList();
+  updatePropertiesFromSelection();
+
+  placementController.start(
+    type,
+    placementTypeLabel(type)
+  );
+
+  renderer.domElement.classList.add("placement-active");
+}
+
+function createObjectAt(type, point, { select = false } = {}) {
+  if (type === "building") {
+    return createBuilding({
+      x: point.x,
+      y: 1.5,
+      z: point.z,
+      select,
+    });
+  }
+
+  return createEditorProp(type, {
+    x: point.x,
+    z: point.z,
+    select,
   });
+}
+
+function createFromLibrary(type) {
+  startPlacementMode(type);
 }
 
 function selectObject(object) {
@@ -410,7 +558,12 @@ function selectObject(object) {
   }
 
   state.selected = object;
-  transformControls.attach(object);
+
+  if (isLocked(object)) {
+    transformControls.detach();
+  } else {
+    transformControls.attach(object);
+  }
 
   if (isUniformObject(object)) {
     state.lastUniformScale = object.scale.x;
@@ -470,15 +623,21 @@ function deleteSelectedObject() {
   transformControls.detach();
   scene.remove(object);
 
-  if (isBuilding(object)) {
-    object.traverse((child) => {
+  object.traverse((child) => {
+    if (isBuilding(object)) {
       child.geometry?.dispose?.();
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        for (const material of materials) material.dispose?.();
+    }
+
+    if (child.material && (isBuilding(object) || child.userData.editorMaterialLocal)) {
+      const materials = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+
+      for (const material of materials) {
+        material.dispose?.();
       }
-    });
-  }
+    }
+  });
 
   state.objects = state.objects.filter((item) => item !== object);
   state.selected = null;
@@ -514,6 +673,11 @@ function removeSelectionBox() {
 
 function setTransformMode(mode) {
   if (!["translate", "rotate", "scale"].includes(mode)) return;
+
+  if (placementController?.isActive()) {
+    placementController.finish();
+  }
+
   state.transformMode = mode;
   transformControls.setMode(mode);
   configureTransformForSelection();
@@ -529,6 +693,15 @@ function configureTransformForSelection() {
   transformControls.showY = true;
   transformControls.showZ = true;
   if (!object) return;
+
+  if (isLocked(object)) {
+    transformControls.detach();
+    return;
+  }
+
+  if (transformControls.object !== object) {
+    transformControls.attach(object);
+  }
 
   const mode = state.transformMode;
 
@@ -554,9 +727,16 @@ function configureTransformForSelection() {
 
 function applySelectionConstraints() {
   const object = state.selected;
-  if (!object) return;
+  if (!object || isLocked(object)) return;
 
-  if (!isBuilding(object) && state.transformMode === "translate") {
+  // El plano mide 140 × 140 m, así que mantenemos X/Z
+  // dentro de la retícula y sincronizados con los sliders.
+  object.position.x = clamp(object.position.x, -70, 70);
+  object.position.z = clamp(object.position.z, -70, 70);
+
+  if (isBuilding(object)) {
+    object.position.y = clamp(object.position.y, -5, 40);
+  } else {
     object.position.y = 0;
   }
 
@@ -610,8 +790,23 @@ function refreshSceneList() {
       ? "edif."
       : PROP_CATALOG[object.userData.propType]?.label.toLowerCase() || "prop";
 
+    if (isLocked(object)) {
+      type.textContent = "🔒";
+      type.title = "Bloqueado";
+    }
+
     row.append(icon, name, type);
-    row.addEventListener("click", () => selectObject(object));
+    row.addEventListener("click", () => {
+      if (placementController?.isActive()) {
+        placementController.finish();
+      }
+
+      selectObject(object);
+
+      if (mobilePanels?.isMobile()) {
+        mobilePanels.closePanels();
+      }
+    });
     sceneList.appendChild(row);
   }
 
@@ -634,12 +829,28 @@ function updatePropertiesFromSelection() {
   emptyProperties.classList.toggle("hidden", hasSelection);
   propertiesContent.classList.toggle("hidden", !hasSelection);
 
+  const showSelectionToolbar =
+    hasSelection && !placementController?.isActive();
+
+  selectionToolbar.classList.toggle(
+    "hidden",
+    !showSelectionToolbar
+  );
+
   if (!object) {
     propertiesKind.textContent = "SELECCIÓN";
     propertiesTitle.textContent = "Sin selección";
     selectionStatus.textContent = "Ningún objeto seleccionado";
     return;
   }
+
+  const locked = isLocked(object);
+
+  quickSelectionName.textContent = object.name;
+  quickLockButton.setAttribute("aria-pressed", String(locked));
+  quickLockButton.classList.toggle("locked", locked);
+  quickLockIcon.textContent = locked ? "🔒" : "🔓";
+  quickLockText.textContent = locked ? "Desbloquear" : "Bloquear";
 
   propertiesKind.textContent = objectKindLabel(object);
   propertiesTitle.textContent = object.name;
@@ -661,11 +872,40 @@ function updatePropertiesFromSelection() {
     depthInput.value = round2(dimensions.z);
   }
 
-  positionXInput.value = round2(object.position.x);
-  positionYInput.value = round2(object.position.y);
-  positionZInput.value = round2(object.position.z);
-  positionYInput.disabled = !isBuilding(object);
+  positionXInput.value = String(clamp(object.position.x, -70, 70));
+  positionYInput.value = String(clamp(object.position.y, -5, 40));
+  positionZInput.value = String(clamp(object.position.z, -70, 70));
+
+  positionXValue.textContent = formatMeters(object.position.x);
+  positionYValue.textContent = formatMeters(object.position.y);
+  positionZValue.textContent = formatMeters(object.position.z);
+
+  const building = isBuilding(object);
+  positionYField.classList.toggle("hidden", !building);
+  positionYInput.disabled = !building || locked;
+
+  const opacityPercent = Math.round(getObjectOpacity(object) * 100);
+  objectOpacityInput.value = String(opacityPercent);
+  objectOpacityValue.textContent = `${opacityPercent}%`;
+
   rotationYInput.value = round2(degrees(object.rotation.y));
+
+  const geometryControls = [
+    widthInput,
+    heightInput,
+    depthInput,
+    uniformSizeInput,
+    positionXInput,
+    positionYInput,
+    positionZInput,
+    rotationYInput,
+  ];
+
+  for (const control of geometryControls) {
+    if (control) control.disabled = locked || (control === positionYInput && !building);
+  }
+
+  lockedNote.classList.toggle("hidden", !locked);
 }
 
 function getEditableDimensions(object) {
@@ -690,7 +930,7 @@ function setEditableDimensions(object, width, height, depth) {
 
 function applyDimensionsFromInputs() {
   const object = state.selected;
-  if (!object || isUniformObject(object)) return;
+  if (!object || isLocked(object) || isUniformObject(object)) return;
 
   const current = getEditableDimensions(object);
   const width = clamp(numberOrFallback(widthInput.value, current.x), 0.1, 200);
@@ -702,23 +942,40 @@ function applyDimensionsFromInputs() {
   updatePropertiesFromSelection();
 }
 
-function applyPositionFromInputs() {
+function applyPositionFromSliders() {
   const object = state.selected;
-  if (!object) return;
+  if (!object || isLocked(object)) return;
 
-  object.position.x = clamp(numberOrFallback(positionXInput.value, object.position.x), -250, 250);
-  object.position.z = clamp(numberOrFallback(positionZInput.value, object.position.z), -250, 250);
+  object.position.x = clamp(
+    numberOrFallback(positionXInput.value, object.position.x),
+    -70,
+    70
+  );
+
+  object.position.z = clamp(
+    numberOrFallback(positionZInput.value, object.position.z),
+    -70,
+    70
+  );
+
   object.position.y = isBuilding(object)
-    ? clamp(numberOrFallback(positionYInput.value, object.position.y), -50, 120)
+    ? clamp(
+        numberOrFallback(positionYInput.value, object.position.y),
+        -5,
+        40
+      )
     : 0;
 
+  positionXValue.textContent = formatMeters(object.position.x);
+  positionYValue.textContent = formatMeters(object.position.y);
+  positionZValue.textContent = formatMeters(object.position.z);
+
   updateSelectionBox();
-  updatePropertiesFromSelection();
 }
 
 function applyRotationFromInput() {
   const object = state.selected;
-  if (!object) return;
+  if (!object || isLocked(object)) return;
 
   const angle = clamp(
     numberOrFallback(rotationYInput.value, degrees(object.rotation.y)),
@@ -732,7 +989,7 @@ function applyRotationFromInput() {
 
 function applyUniformSize(percentage) {
   const object = state.selected;
-  if (!object || !isUniformObject(object)) return;
+  if (!object || isLocked(object) || !isUniformObject(object)) return;
 
   const scale = clamp(percentage / 100, 0.25, 3);
   object.scale.setScalar(scale);
@@ -762,6 +1019,49 @@ function editorRootFromHit(object) {
     current = current.parent;
   }
   return null;
+}
+
+function groundPointFromEvent(event) {
+  pointerToNdc(event);
+  raycaster.setFromCamera(pointer, camera);
+
+  const hits = raycaster.intersectObject(ground, false);
+
+  if (!hits.length) {
+    return null;
+  }
+
+  const point = hits[0].point.clone();
+  point.x = clamp(point.x, -70, 70);
+  point.z = clamp(point.z, -70, 70);
+  point.y = 0;
+
+  return point;
+}
+
+function placeCurrentType(event) {
+  if (!placementController?.isActive()) {
+    return false;
+  }
+
+  const point = groundPointFromEvent(event);
+
+  if (!point) {
+    return true;
+  }
+
+  const type = placementController.getType();
+  const object = createObjectAt(type, point, { select: false });
+
+  placementController.record(object);
+
+  state.selected = object;
+  transformControls.detach();
+  createSelectionBox(object);
+  refreshSceneList();
+  updatePropertiesFromSelection();
+
+  return true;
 }
 
 function pickObject(event) {
@@ -847,12 +1147,20 @@ function installEvents() {
     const moved = Math.hypot(dx, dy);
     state.pointerDown = null;
 
-    if (moved <= 5) pickObject(event);
+    if (moved <= 5) {
+      if (!placeCurrentType(event)) {
+        pickObject(event);
+      }
+    }
   });
 
   for (const button of libraryButtons) {
     button.addEventListener("click", () => {
       createFromLibrary(button.dataset.create);
+
+      if (mobilePanels?.isMobile()) {
+        mobilePanels.closePanels();
+      }
     });
   }
 
@@ -876,7 +1184,7 @@ function installEvents() {
   }
 
   for (const input of [positionXInput, positionYInput, positionZInput]) {
-    input.addEventListener("change", applyPositionFromInputs);
+    input.addEventListener("input", applyPositionFromSliders);
   }
 
   rotationYInput.addEventListener("change", applyRotationFromInput);
@@ -887,6 +1195,18 @@ function installEvents() {
 
   duplicateButton.addEventListener("click", duplicateSelectedObject);
   deleteButton.addEventListener("click", deleteSelectedObject);
+
+  quickLockButton.addEventListener("click", toggleSelectedLock);
+  quickDuplicateButton.addEventListener("click", duplicateSelectedObject);
+  quickDeleteButton.addEventListener("click", deleteSelectedObject);
+
+  objectOpacityInput.addEventListener("input", (event) => {
+    if (!state.selected) return;
+
+    const percentage = Number(event.target.value);
+    setObjectOpacity(state.selected, percentage / 100);
+    objectOpacityValue.textContent = `${percentage}%`;
+  });
 
   perspectiveViewButton.addEventListener("click", setPerspectiveView);
   topViewButton.addEventListener("click", setTopView);
@@ -915,7 +1235,13 @@ function installEvents() {
     if (key === "w") setTransformMode("translate");
     if (key === "e") setTransformMode("rotate");
     if (key === "r") setTransformMode("scale");
-    if (key === "escape") deselectObject();
+    if (key === "escape") {
+      if (placementController?.isActive()) {
+        placementController.finish();
+      } else {
+        deselectObject();
+      }
+    }
 
     if ((event.key === "Delete" || event.key === "Backspace") && state.selected) {
       event.preventDefault();
@@ -976,15 +1302,21 @@ function cleanup() {
   transformControls?.dispose();
 
   for (const object of state.objects) {
-    if (isBuilding(object)) {
-      object.traverse((child) => {
+    object.traverse((child) => {
+      if (isBuilding(object)) {
         child.geometry?.dispose?.();
-        if (child.material) {
-          const materials = Array.isArray(child.material) ? child.material : [child.material];
-          for (const material of materials) material.dispose?.();
+      }
+
+      if (child.material && (isBuilding(object) || child.userData.editorMaterialLocal)) {
+        const materials = Array.isArray(child.material)
+          ? child.material
+          : [child.material];
+
+        for (const material of materials) {
+          material.dispose?.();
         }
-      });
-    }
+      }
+    });
   }
 
   ground?.geometry?.dispose?.();

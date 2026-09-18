@@ -3,6 +3,10 @@ export function setupMobilePanels() {
   const closeButtons = [...document.querySelectorAll("[data-close-panel]")];
   const backdrop = document.querySelector("#mobileBackdrop");
 
+  function isMobile() {
+    return window.matchMedia("(max-width: 760px)").matches;
+  }
+
   function closePanels() {
     document.querySelectorAll(".panel.mobile-open").forEach((panel) => {
       panel.classList.remove("mobile-open");
@@ -45,16 +49,16 @@ export function setupMobilePanels() {
   backdrop?.addEventListener("click", closePanels);
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closePanels();
-    }
+    if (event.key === "Escape") closePanels();
   });
 
   window.addEventListener("resize", () => {
-    if (window.innerWidth > 760) {
-      closePanels();
-    }
+    if (!isMobile()) closePanels();
   });
 
-  return { closePanels, openPanel };
+  return {
+    closePanels,
+    openPanel,
+    isMobile,
+  };
 }
