@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 3. Constructor 3D de edificios."
+    content="Resort Map Builder · Parte 4. Constructor 3D con edificios y props ligeros."
   />
-  <title>Resort Map Builder · Parte 3</title>
+  <title>Resort Map Builder · Parte 4</title>
 
   <link rel="stylesheet" href="./style.css" />
 
@@ -35,17 +35,17 @@
       </div>
 
       <div class="mode-toolbar" aria-label="Herramientas de transformación">
-        <button class="tool-button active" id="moveMode" type="button" data-mode="translate">
+        <button class="tool-button active" type="button" data-mode="translate">
           <span class="tool-icon">↔</span>
           <span>Mover</span>
         </button>
 
-        <button class="tool-button" id="rotateMode" type="button" data-mode="rotate">
+        <button class="tool-button" type="button" data-mode="rotate">
           <span class="tool-icon">⟳</span>
           <span>Rotar</span>
         </button>
 
-        <button class="tool-button" id="scaleMode" type="button" data-mode="scale">
+        <button class="tool-button" type="button" data-mode="scale">
           <span class="tool-icon">⤢</span>
           <span>Escalar</span>
         </button>
@@ -60,58 +60,148 @@
     <main class="workspace" aria-label="Constructor 3D">
       <div id="viewport" aria-label="Plano tridimensional interactivo"></div>
 
-      <aside class="objects-panel panel" aria-label="Edificios">
+      <aside class="library-panel panel" aria-label="Biblioteca de objetos">
         <div class="panel-heading">
           <div>
-            <span class="panel-kicker">OBJETOS</span>
-            <strong>Edificios</strong>
+            <span class="panel-kicker">BIBLIOTECA</span>
+            <strong>Añadir al plano</strong>
           </div>
-
-          <span class="count-badge" id="buildingCount">0</span>
         </div>
 
-        <div class="objects-list" id="buildingList" aria-live="polite"></div>
+        <div class="library-scroll">
+          <section class="library-section">
+            <span class="library-section-title">Arquitectura</span>
 
-        <button class="add-building-button" id="addBuilding" type="button">
-          <span>＋</span>
-          Añadir edificio
-        </button>
+            <button class="library-item" type="button" data-create="building">
+              <span class="library-symbol symbol-building" aria-hidden="true"></span>
+              <span>
+                <strong>Edificio</strong>
+                <small>Volumen editable</small>
+              </span>
+            </button>
+          </section>
+
+          <section class="library-section">
+            <span class="library-section-title">Vegetación</span>
+
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="palm">
+                <span class="library-emoji" aria-hidden="true">🌴</span>
+                <span><strong>Palmera</strong></span>
+              </button>
+
+              <button class="library-item compact" type="button" data-create="tree">
+                <span class="library-emoji" aria-hidden="true">🌳</span>
+                <span><strong>Árbol</strong></span>
+              </button>
+
+              <button class="library-item compact" type="button" data-create="shrub">
+                <span class="library-emoji" aria-hidden="true">🌿</span>
+                <span><strong>Arbusto</strong></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="library-section">
+            <span class="library-section-title">Elementos</span>
+
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="lamp">
+                <span class="library-glyph" aria-hidden="true">│•</span>
+                <span><strong>Poste</strong></span>
+              </button>
+
+              <button class="library-item compact" type="button" data-create="fountain">
+                <span class="library-glyph" aria-hidden="true">◉</span>
+                <span><strong>Fuente</strong></span>
+              </button>
+
+              <button class="library-item compact" type="button" data-create="bridge">
+                <span class="library-glyph" aria-hidden="true">⌒</span>
+                <span><strong>Puente</strong></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="library-section">
+            <span class="library-section-title">Superficies</span>
+
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="path">
+                <span class="surface-swatch path-swatch" aria-hidden="true"></span>
+                <span><strong>Camino</strong></span>
+              </button>
+
+              <button class="library-item compact" type="button" data-create="water">
+                <span class="surface-swatch water-swatch" aria-hidden="true"></span>
+                <span><strong>Agua</strong></span>
+              </button>
+            </div>
+          </section>
+        </div>
       </aside>
 
-      <aside class="properties-panel panel" id="propertiesPanel" aria-label="Propiedades del edificio">
+      <aside class="scene-panel panel" aria-label="Objetos de la escena">
         <div class="panel-heading">
           <div>
-            <span class="panel-kicker">SELECCIÓN</span>
+            <span class="panel-kicker">ESCENA</span>
+            <strong>Objetos</strong>
+          </div>
+
+          <span class="count-badge" id="objectCount">0</span>
+        </div>
+
+        <div class="scene-list" id="sceneList" aria-live="polite"></div>
+      </aside>
+
+      <aside class="properties-panel panel" aria-label="Propiedades del objeto">
+        <div class="panel-heading">
+          <div>
+            <span class="panel-kicker" id="propertiesKind">SELECCIÓN</span>
             <strong id="propertiesTitle">Sin selección</strong>
           </div>
         </div>
 
         <div class="empty-properties" id="emptyProperties">
-          Selecciona un edificio en el plano o en la lista.
+          Selecciona un edificio o prop en el plano.
         </div>
 
         <div class="properties-content hidden" id="propertiesContent">
           <label class="field field-wide">
             <span>Nombre</span>
-            <input id="buildingName" type="text" maxlength="40" autocomplete="off" />
+            <input id="objectName" type="text" maxlength="50" autocomplete="off" />
           </label>
 
-          <div class="section-label">Dimensiones</div>
+          <div id="dimensionFields">
+            <div class="section-label">Dimensiones</div>
 
-          <div class="field-grid">
-            <label class="field">
-              <span>Ancho X · m</span>
-              <input id="buildingWidth" type="number" min="0.2" max="140" step="0.1" inputmode="decimal" />
-            </label>
+            <div class="field-grid">
+              <label class="field">
+                <span>Ancho X · m</span>
+                <input id="objectWidth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
+              </label>
 
-            <label class="field">
-              <span>Altura Y · m</span>
-              <input id="buildingHeight" type="number" min="0.2" max="80" step="0.1" inputmode="decimal" />
-            </label>
+              <label class="field">
+                <span>Altura Y · m</span>
+                <input id="objectHeight" type="number" min="0.05" max="100" step="0.1" inputmode="decimal" />
+              </label>
 
-            <label class="field">
-              <span>Largo Z · m</span>
-              <input id="buildingDepth" type="number" min="0.2" max="140" step="0.1" inputmode="decimal" />
+              <label class="field">
+                <span>Largo Z · m</span>
+                <input id="objectDepth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
+              </label>
+            </div>
+          </div>
+
+          <div id="uniformSizeFields" class="hidden">
+            <div class="section-label">Tamaño</div>
+
+            <label class="field field-wide">
+              <span>Escala uniforme</span>
+              <div class="range-with-value">
+                <input id="uniformSize" type="range" min="25" max="300" step="5" value="100" />
+                <span id="uniformSizeValue">100%</span>
+              </div>
             </label>
           </div>
 
@@ -120,17 +210,17 @@
           <div class="field-grid">
             <label class="field">
               <span>X</span>
-              <input id="positionX" type="number" min="-200" max="200" step="0.1" inputmode="decimal" />
+              <input id="positionX" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
             </label>
 
             <label class="field">
               <span>Y</span>
-              <input id="positionY" type="number" min="-50" max="100" step="0.1" inputmode="decimal" />
+              <input id="positionY" type="number" min="-50" max="120" step="0.1" inputmode="decimal" />
             </label>
 
             <label class="field">
               <span>Z</span>
-              <input id="positionZ" type="number" min="-200" max="200" step="0.1" inputmode="decimal" />
+              <input id="positionZ" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
             </label>
           </div>
 
@@ -142,13 +232,8 @@
           </label>
 
           <div class="properties-actions">
-            <button class="action-button" id="duplicateBuilding" type="button">
-              Duplicar
-            </button>
-
-            <button class="action-button danger" id="deleteBuilding" type="button">
-              Eliminar
-            </button>
+            <button class="action-button" id="duplicateObject" type="button">Duplicar</button>
+            <button class="action-button danger" id="deleteObject" type="button">Eliminar</button>
           </div>
         </div>
       </aside>
@@ -173,32 +258,29 @@
             role="switch"
             aria-checked="true"
             aria-label="Mostrar u ocultar retícula"
-          >
-            #
-          </button>
+          >#</button>
         </div>
       </section>
 
       <div class="help-pill">
         <span><b>Clic:</b> seleccionar</span>
-        <span><b>Izquierdo:</b> mover cámara</span>
-        <span><b>Derecho:</b> rotar cámara</span>
-        <span><b>Rueda:</b> zoom</span>
+        <span><b>W:</b> mover</span>
+        <span><b>E:</b> rotar</span>
+        <span><b>R:</b> escalar</span>
+        <span><b>Ctrl/Cmd + D:</b> duplicar</span>
       </div>
 
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">
-            Comprueba que el navegador tenga WebGL habilitado y conexión a internet para cargar Three.js.
-          </p>
+          <p id="fatalMessage"></p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Parte 3 · Sistema de edificios</span>
-      <span id="selectionStatus">Ningún edificio seleccionado</span>
+      <span>Parte 4 · Props ligeros y superficies</span>
+      <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 

@@ -1,41 +1,64 @@
-# Resort Map Builder · Parte 3
+# Resort Map Builder · Parte 4
 
-Esta etapa convierte la escena de la Parte 2 en un pequeño constructor 3D de edificios.
+La Parte 4 añade una biblioteca de props ligeros y mantiene el proyecto dividido por responsabilidades.
 
-## Archivos que debes reemplazar en GitHub
+## Archivos
 
-- `index.html`
-- `style.css`
-- `app.js`
+```text
+/
+├── index.html
+├── style.css
+├── app.js
+└── src/
+    └── props.js
+```
 
-## Funciones nuevas
+`props.js` es nuevo. Contiene únicamente la biblioteca procedural de objetos.
 
-- Crear edificios.
-- Seleccionar edificios desde el plano.
-- Seleccionarlos también desde una lista.
-- Mover en X/Y/Z.
-- Rotar.
-- Escalar.
-- Cambiar ancho, altura y largo con valores numéricos.
-- Cambiar posición con valores numéricos.
-- Cambiar giro Y con grados.
-- Renombrar.
-- Duplicar.
-- Eliminar.
-- Caja visual de selección.
-- TransformControls integrado con MapControls.
-- Atajos:
-  - `W`: mover.
-  - `E`: rotar.
-  - `R`: escalar.
-  - `Esc`: deseleccionar.
-  - `Delete/Backspace`: eliminar.
-  - `Ctrl/Cmd + D`: duplicar.
+## Props incluidos
 
-## Escala
+- Palmera
+- Árbol
+- Arbusto
+- Poste
+- Fuente
+- Puente
+- Camino
+- Zona de agua
 
-En esta versión usamos la convención:
+No requieren archivos GLB ni texturas externas.
 
-`1 unidad 3D = 1 metro`
+## Reglas
 
-Esto será útil más adelante para rutas y distancias.
+### Vegetación, poste y fuente
+
+Tienen escala uniforme para no deformarlos.
+
+### Puente, camino y agua
+
+Pueden cambiar ancho, altura y largo.
+
+### Edificios
+
+Conservan el sistema de la Parte 3.
+
+## Transformaciones
+
+- `W`: mover.
+- `E`: rotar.
+- `R`: escalar.
+- `Esc`: deseleccionar.
+- `Delete / Backspace`: eliminar.
+- `Ctrl/Cmd + D`: duplicar.
+
+## Escala del proyecto
+
+`1 unidad 3D = 1 metro`.
+
+## Rendimiento
+
+Los props reutilizan geometrías y materiales para reducir consumo de memoria.
+Los objetos siguen siendo independientes para permitir selección y edición individual.
+
+Si en una etapa futura el mapa contiene cientos o miles de elementos repetidos,
+la arquitectura permite migrar categorías repetitivas a `THREE.InstancedMesh`.

@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import {
+  PROP_CATALOG,
+  createProp,
+  disposePropLibrary,
+} from "./src/props.js";
 
 // --------------------------------------------------
 // DOM
@@ -14,38 +19,45 @@ const selectionStatus = document.querySelector("#selectionStatus");
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
 
-const buildingList = document.querySelector("#buildingList");
-const buildingCount = document.querySelector("#buildingCount");
-const addBuildingButton = document.querySelector("#addBuilding");
+const libraryButtons = [...document.querySelectorAll("[data-create]")];
+const sceneList = document.querySelector("#sceneList");
+const objectCount = document.querySelector("#objectCount");
 
 const emptyProperties = document.querySelector("#emptyProperties");
 const propertiesContent = document.querySelector("#propertiesContent");
+const propertiesKind = document.querySelector("#propertiesKind");
 const propertiesTitle = document.querySelector("#propertiesTitle");
 
-const buildingNameInput = document.querySelector("#buildingName");
-const widthInput = document.querySelector("#buildingWidth");
-const heightInput = document.querySelector("#buildingHeight");
-const depthInput = document.querySelector("#buildingDepth");
+const objectNameInput = document.querySelector("#objectName");
+
+const dimensionFields = document.querySelector("#dimensionFields");
+const uniformSizeFields = document.querySelector("#uniformSizeFields");
+
+const widthInput = document.querySelector("#objectWidth");
+const heightInput = document.querySelector("#objectHeight");
+const depthInput = document.querySelector("#objectDepth");
+
+const uniformSizeInput = document.querySelector("#uniformSize");
+const uniformSizeValue = document.querySelector("#uniformSizeValue");
 
 const positionXInput = document.querySelector("#positionX");
 const positionYInput = document.querySelector("#positionY");
 const positionZInput = document.querySelector("#positionZ");
 const rotationYInput = document.querySelector("#rotationY");
 
-const duplicateButton = document.querySelector("#duplicateBuilding");
-const deleteButton = document.querySelector("#deleteBuilding");
+const duplicateButton = document.querySelector("#duplicateObject");
+const deleteButton = document.querySelector("#deleteObject");
 
 const modeButtons = [...document.querySelectorAll("[data-mode]")];
 
 const gridOpacityInput = document.querySelector("#gridOpacity");
 const gridOpacityValue = document.querySelector("#gridOpacityValue");
 const gridToggle = document.querySelector("#gridToggle");
-
 const resetViewButton = document.querySelector("#resetView");
 const topViewButton = document.querySelector("#topView");
 
 // --------------------------------------------------
-// CONSTANTES / ESTADO
+// ESTADO
 // --------------------------------------------------
 
 const INITIAL_CAMERA = new THREE.Vector3(42, 36, 48);
@@ -56,13 +68,15 @@ const BUILDING_EDGE_COLOR = 0x716d66;
 const SELECTED_EDGE_COLOR = 0x171717;
 
 const state = {
-  buildings: [],
+  objects: [],
   selected: null,
   transformMode: "translate",
   gridOpacity: 0.55,
   gridVisible: true,
   nextBuildingNumber: 1,
+  nextPropNumbers: {},
   pointerDown: null,
+  lastUniformScale: 1,
 };
 
 let scene;
@@ -107,6 +121,10 @@ function radians(deg) {
   return THREE.MathUtils.degToRad(deg);
 }
 
+function makeId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function isEditingField() {
   const active = document.activeElement;
 
@@ -117,8 +135,34 @@ function isEditingField() {
   );
 }
 
+function isUniformObject(object) {
+  return object?.userData?.scalePolicy === "uniform";
+}
+
+function isBuilding(object) {
+  return object?.userData?.editorType === "building";
+}
+
+function isSurfaceLike(object) {
+  return (
+    object?.userData?.propType === "path" ||
+    object?.userData?.propType === "water"
+  );
+}
+
+function objectKindLabel(object) {
+  if (!object) return "";
+
+  if (isBuilding(object)) {
+    return "EDIFICIO";
+  }
+
+  const type = object.userData.propType;
+  return (PROP_CATALOG[type]?.label || "PROP").toUpperCase();
+}
+
 function showFatalError(message) {
-  if (fatalMessage && message) {
+  if (fatalMessage) {
     fatalMessage.textContent = message;
   }
 
@@ -175,7 +219,6 @@ function createScene() {
   resizeViewport();
   installEvents();
 
-  // Un edificio inicial para poder comprobar inmediatamente la Parte 3.
   createBuilding({
     name: "Edificio 1",
     width: 8,
@@ -199,8 +242,9 @@ function createScene() {
 }
 
 function createLights() {
-  const hemisphere = new THREE.HemisphereLight(0xffffff, 0xc8c3ba, 2.15);
-  scene.add(hemisphere);
+  scene.add(
+    new THREE.HemisphereLight(0xffffff, 0xc8c3ba, 2.15)
+  );
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
   keyLight.position.set(22, 38, 26);
@@ -208,16 +252,16 @@ function createLights() {
 }
 
 function createGround() {
-  const geometry = new THREE.PlaneGeometry(140, 140);
+  ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(140, 140),
+    new THREE.MeshStandardMaterial({
+      color: 0xf8f8f4,
+      roughness: 1,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    })
+  );
 
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xf8f8f4,
-    roughness: 1,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-
-  ground = new THREE.Mesh(geometry, material);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.name = "Ground";
@@ -228,7 +272,9 @@ function createGround() {
 function createGrid() {
   grid = new THREE.GridHelper(140, 70, 0x777777, 0xc7c7c1);
 
-  const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
+  const materials = Array.isArray(grid.material)
+    ? grid.material
+    : [grid.material];
 
   for (const material of materials) {
     material.transparent = true;
@@ -236,7 +282,6 @@ function createGrid() {
     material.depthWrite = false;
   }
 
-  grid.visible = state.gridVisible;
   scene.add(grid);
 }
 
@@ -288,12 +333,15 @@ function createTransformControls() {
   transformControls.setMode(state.transformMode);
   transformControls.setSize(0.92);
 
-  // En r186 el elemento visual se obtiene con getHelper().
   transformHelper = transformControls.getHelper();
   scene.add(transformHelper);
 
   transformControls.addEventListener("mouseDown", () => {
     mapControls.enabled = false;
+
+    if (state.selected && isUniformObject(state.selected)) {
+      state.lastUniformScale = state.selected.scale.x;
+    }
   });
 
   transformControls.addEventListener("mouseUp", () => {
@@ -301,7 +349,7 @@ function createTransformControls() {
   });
 
   transformControls.addEventListener("objectChange", () => {
-    normalizeSelectedScale();
+    applySelectionConstraints();
     updateSelectionBox();
     updatePropertiesFromSelection();
   });
@@ -330,41 +378,41 @@ function createBuilding({
     metalness: 0,
   });
 
-  const mesh = new THREE.Mesh(geometry, material);
+  const object = new THREE.Mesh(geometry, material);
 
-  mesh.scale.set(
-    clamp(width, 0.2, 140),
-    clamp(height, 0.2, 80),
-    clamp(depth, 0.2, 140)
+  object.userData.editorType = "building";
+  object.userData.scalePolicy = "free";
+  object.userData.id = makeId("building");
+
+  object.name =
+    name || `Edificio ${state.nextBuildingNumber++}`;
+
+  object.scale.set(
+    clamp(width, 0.2, 200),
+    clamp(height, 0.2, 100),
+    clamp(depth, 0.2, 200)
   );
 
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotationY;
+  object.position.set(x, y, z);
+  object.rotation.y = rotationY;
 
-  const buildingName = name || `Edificio ${state.nextBuildingNumber++}`;
+  addBuildingEdges(object);
 
-  mesh.name = buildingName;
-  mesh.userData.type = "building";
-  mesh.userData.id =
-    `building-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  scene.add(object);
+  state.objects.push(object);
 
-  addPermanentEdges(mesh);
-
-  scene.add(mesh);
-  state.buildings.push(mesh);
-
-  renderBuildingList();
+  refreshSceneList();
 
   if (select) {
-    selectBuilding(mesh);
+    selectObject(object);
   }
 
-  return mesh;
+  return object;
 }
 
-function addPermanentEdges(mesh) {
+function addBuildingEdges(object) {
   const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(mesh.geometry),
+    new THREE.EdgesGeometry(object.geometry),
     new THREE.LineBasicMaterial({
       color: BUILDING_EDGE_COLOR,
       transparent: true,
@@ -374,97 +422,205 @@ function addPermanentEdges(mesh) {
 
   edges.name = "BuildingEdges";
   edges.raycast = () => {};
-  mesh.add(edges);
+  object.add(edges);
 }
 
-function duplicateSelectedBuilding() {
-  if (!state.selected) {
+// --------------------------------------------------
+// PROPS
+// --------------------------------------------------
+
+function nextPropName(type) {
+  const current =
+    (state.nextPropNumbers[type] || 0) + 1;
+
+  state.nextPropNumbers[type] = current;
+
+  const base =
+    PROP_CATALOG[type]?.defaultName || "Prop";
+
+  return `${base} ${current}`;
+}
+
+function createEditorProp(type, {
+  x = 0,
+  z = 0,
+  rotationY = 0,
+  scale = 1,
+  select = true,
+  name = null,
+} = {}) {
+  const object = createProp(type);
+
+  object.userData.id = makeId(type);
+  object.name = name || nextPropName(type);
+
+  object.position.set(x, 0, z);
+  object.rotation.y = rotationY;
+
+  if (isUniformObject(object)) {
+    object.scale.setScalar(
+      clamp(scale, 0.25, 3)
+    );
+  }
+
+  scene.add(object);
+  state.objects.push(object);
+
+  refreshSceneList();
+
+  if (select) {
+    selectObject(object);
+  }
+
+  return object;
+}
+
+function createFromLibrary(type) {
+  const center = mapControls.target;
+
+  if (type === "building") {
+    createBuilding({
+      x: center.x,
+      y: 1.5,
+      z: center.z,
+      select: true,
+    });
+
     return;
   }
 
-  const source = state.selected;
-
-  const clone = createBuilding({
-    name: `${source.name} copia`,
-    width: source.scale.x,
-    height: source.scale.y,
-    depth: source.scale.z,
-    x: source.position.x + 2,
-    y: source.position.y,
-    z: source.position.z + 2,
-    rotationY: source.rotation.y,
+  createEditorProp(type, {
+    x: center.x,
+    z: center.z,
     select: true,
   });
+}
 
+// --------------------------------------------------
+// SELECCIÓN / DUPLICADO / ELIMINADO
+// --------------------------------------------------
+
+function selectObject(object) {
+  if (!object || !state.objects.includes(object)) {
+    deselectObject();
+    return;
+  }
+
+  state.selected = object;
+
+  transformControls.attach(object);
+
+  if (isUniformObject(object)) {
+    state.lastUniformScale = object.scale.x;
+  }
+
+  configureTransformForSelection();
+  createSelectionBox(object);
+
+  refreshSceneList();
+  updatePropertiesFromSelection();
+}
+
+function deselectObject() {
+  state.selected = null;
+
+  transformControls.detach();
+  removeSelectionBox();
+
+  refreshSceneList();
+  updatePropertiesFromSelection();
+}
+
+function duplicateSelectedObject() {
+  const source = state.selected;
+
+  if (!source) {
+    return;
+  }
+
+  if (isBuilding(source)) {
+    return createBuilding({
+      name: `${source.name} copia`,
+      width: source.scale.x,
+      height: source.scale.y,
+      depth: source.scale.z,
+      x: source.position.x + 2,
+      y: source.position.y,
+      z: source.position.z + 2,
+      rotationY: source.rotation.y,
+      select: true,
+    });
+  }
+
+  const type = source.userData.propType;
+
+  const clone = createEditorProp(type, {
+    name: `${source.name} copia`,
+    x: source.position.x + 1.5,
+    z: source.position.z + 1.5,
+    rotationY: source.rotation.y,
+    scale: isUniformObject(source) ? source.scale.x : 1,
+    select: false,
+  });
+
+  clone.position.y = source.position.y;
+
+  if (!isUniformObject(source)) {
+    clone.scale.copy(source.scale);
+  }
+
+  selectObject(clone);
   return clone;
 }
 
-function deleteSelectedBuilding() {
-  const building = state.selected;
+function deleteSelectedObject() {
+  const object = state.selected;
 
-  if (!building) {
+  if (!object) {
     return;
   }
 
   transformControls.detach();
+  scene.remove(object);
 
-  scene.remove(building);
+  if (isBuilding(object)) {
+    object.traverse((child) => {
+      child.geometry?.dispose?.();
 
-  building.traverse((object) => {
-    object.geometry?.dispose?.();
+      if (child.material) {
+        const materials = Array.isArray(child.material)
+          ? child.material
+          : [child.material];
 
-    if (object.material) {
-      const materials = Array.isArray(object.material)
-        ? object.material
-        : [object.material];
-
-      for (const material of materials) {
-        material.dispose?.();
+        for (const material of materials) {
+          material.dispose?.();
+        }
       }
-    }
-  });
-
-  state.buildings = state.buildings.filter((item) => item !== building);
-  state.selected = null;
-
-  removeSelectionBox();
-  renderBuildingList();
-  updatePropertiesFromSelection();
-}
-
-function selectBuilding(building) {
-  if (!building || !state.buildings.includes(building)) {
-    deselectBuilding();
-    return;
+    });
   }
 
-  state.selected = building;
+  // Los props reutilizan geometrías/materiales compartidos.
+  // Por eso no se eliminan sus recursos individuales aquí.
 
-  transformControls.attach(building);
-  createSelectionBox(building);
+  state.objects =
+    state.objects.filter((item) => item !== object);
 
-  renderBuildingList();
-  updatePropertiesFromSelection();
-}
-
-function deselectBuilding() {
   state.selected = null;
 
-  transformControls.detach();
   removeSelectionBox();
-
-  renderBuildingList();
+  refreshSceneList();
   updatePropertiesFromSelection();
 }
 
-function createSelectionBox(building) {
+function createSelectionBox(object) {
   removeSelectionBox();
 
-  selectionBox = new THREE.BoxHelper(building, SELECTED_EDGE_COLOR);
+  selectionBox =
+    new THREE.BoxHelper(object, SELECTED_EDGE_COLOR);
 
   if (selectionBox.material) {
     selectionBox.material.transparent = true;
-    selectionBox.material.opacity = 0.9;
+    selectionBox.material.opacity = 0.92;
     selectionBox.material.depthTest = false;
   }
 
@@ -489,159 +645,8 @@ function removeSelectionBox() {
   selectionBox = null;
 }
 
-function normalizeSelectedScale() {
-  const building = state.selected;
-
-  if (!building) {
-    return;
-  }
-
-  building.scale.x = clamp(Math.abs(building.scale.x), 0.2, 140);
-  building.scale.y = clamp(Math.abs(building.scale.y), 0.2, 80);
-  building.scale.z = clamp(Math.abs(building.scale.z), 0.2, 140);
-}
-
 // --------------------------------------------------
-// LISTA / PROPIEDADES
-// --------------------------------------------------
-
-function renderBuildingList() {
-  buildingList.replaceChildren();
-
-  for (const building of state.buildings) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className =
-      `object-row${building === state.selected ? " selected" : ""}`;
-
-    button.dataset.id = building.userData.id;
-    button.setAttribute("aria-label", `Seleccionar ${building.name}`);
-
-    const icon = document.createElement("span");
-    icon.className = "object-cube";
-    icon.setAttribute("aria-hidden", "true");
-
-    const label = document.createElement("span");
-    label.className = "object-name";
-    label.textContent = building.name;
-
-    button.append(icon, label);
-
-    button.addEventListener("click", () => {
-      selectBuilding(building);
-    });
-
-    buildingList.appendChild(button);
-  }
-
-  buildingCount.textContent = String(state.buildings.length);
-
-  if (state.buildings.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-properties";
-    empty.textContent = "Todavía no hay edificios.";
-    buildingList.appendChild(empty);
-  }
-}
-
-function updatePropertiesFromSelection() {
-  const building = state.selected;
-  const hasSelection = Boolean(building);
-
-  emptyProperties.classList.toggle("hidden", hasSelection);
-  propertiesContent.classList.toggle("hidden", !hasSelection);
-
-  if (!building) {
-    propertiesTitle.textContent = "Sin selección";
-    selectionStatus.textContent = "Ningún edificio seleccionado";
-    return;
-  }
-
-  propertiesTitle.textContent = building.name;
-  selectionStatus.textContent = `${building.name} seleccionado`;
-
-  buildingNameInput.value = building.name;
-
-  widthInput.value = round2(building.scale.x);
-  heightInput.value = round2(building.scale.y);
-  depthInput.value = round2(building.scale.z);
-
-  positionXInput.value = round2(building.position.x);
-  positionYInput.value = round2(building.position.y);
-  positionZInput.value = round2(building.position.z);
-
-  rotationYInput.value = round2(degrees(building.rotation.y));
-}
-
-function applyDimensionsFromInputs() {
-  const building = state.selected;
-
-  if (!building) {
-    return;
-  }
-
-  const width = clamp(
-    numberOrFallback(widthInput.value, building.scale.x),
-    0.2,
-    140
-  );
-
-  const height = clamp(
-    numberOrFallback(heightInput.value, building.scale.y),
-    0.2,
-    80
-  );
-
-  const depth = clamp(
-    numberOrFallback(depthInput.value, building.scale.z),
-    0.2,
-    140
-  );
-
-  building.scale.set(width, height, depth);
-
-  updateSelectionBox();
-  updatePropertiesFromSelection();
-}
-
-function applyPositionFromInputs() {
-  const building = state.selected;
-
-  if (!building) {
-    return;
-  }
-
-  building.position.set(
-    clamp(numberOrFallback(positionXInput.value, building.position.x), -200, 200),
-    clamp(numberOrFallback(positionYInput.value, building.position.y), -50, 100),
-    clamp(numberOrFallback(positionZInput.value, building.position.z), -200, 200)
-  );
-
-  updateSelectionBox();
-  updatePropertiesFromSelection();
-}
-
-function applyRotationFromInput() {
-  const building = state.selected;
-
-  if (!building) {
-    return;
-  }
-
-  const angle = clamp(
-    numberOrFallback(rotationYInput.value, degrees(building.rotation.y)),
-    -360,
-    360
-  );
-
-  building.rotation.y = radians(angle);
-
-  updateSelectionBox();
-  updatePropertiesFromSelection();
-}
-
-// --------------------------------------------------
-// MODOS DE TRANSFORMACIÓN
+// TRANSFORMACIONES Y REGLAS
 // --------------------------------------------------
 
 function setTransformMode(mode) {
@@ -652,9 +657,7 @@ function setTransformMode(mode) {
   state.transformMode = mode;
   transformControls.setMode(mode);
 
-  // Para edificios nos interesa trabajar respecto a sus propios ejes
-  // al escalar, y respecto al mundo al moverlos.
-  transformControls.setSpace(mode === "scale" ? "local" : "world");
+  configureTransformForSelection();
 
   for (const button of modeButtons) {
     button.classList.toggle(
@@ -664,12 +667,369 @@ function setTransformMode(mode) {
   }
 }
 
+function configureTransformForSelection() {
+  const object = state.selected;
+
+  transformControls.showX = true;
+  transformControls.showY = true;
+  transformControls.showZ = true;
+
+  if (!object) {
+    return;
+  }
+
+  const mode = state.transformMode;
+
+  if (mode === "rotate") {
+    // Para este editor 2.5D solo necesitamos giro sobre Y.
+    transformControls.showX = false;
+    transformControls.showY = true;
+    transformControls.showZ = false;
+    transformControls.setSpace("world");
+    return;
+  }
+
+  if (mode === "translate") {
+    if (!isBuilding(object)) {
+      // Los props viven pegados al plano.
+      transformControls.showY = false;
+    }
+
+    transformControls.setSpace("world");
+    return;
+  }
+
+  if (mode === "scale") {
+    transformControls.setSpace("local");
+
+    if (isUniformObject(object)) {
+      // Se muestran los tres ejes, pero el resultado se normaliza
+      // inmediatamente para conservar escala uniforme.
+      transformControls.showX = true;
+      transformControls.showY = true;
+      transformControls.showZ = true;
+    }
+
+    if (isSurfaceLike(object)) {
+      // Caminos y agua se editan como superficies: ancho y largo.
+      transformControls.showY = false;
+    }
+  }
+}
+
+function applySelectionConstraints() {
+  const object = state.selected;
+
+  if (!object) {
+    return;
+  }
+
+  if (!isBuilding(object) && state.transformMode === "translate") {
+    object.position.y = 0;
+  }
+
+  if (
+    isUniformObject(object) &&
+    state.transformMode === "scale"
+  ) {
+    const previous = state.lastUniformScale;
+
+    const candidates = [
+      object.scale.x,
+      object.scale.y,
+      object.scale.z,
+    ];
+
+    let changed = candidates[0];
+    let largestDelta = Math.abs(candidates[0] - previous);
+
+    for (const candidate of candidates.slice(1)) {
+      const delta = Math.abs(candidate - previous);
+
+      if (delta > largestDelta) {
+        largestDelta = delta;
+        changed = candidate;
+      }
+    }
+
+    const uniform = clamp(
+      Math.abs(changed),
+      0.25,
+      3
+    );
+
+    object.scale.setScalar(uniform);
+    state.lastUniformScale = uniform;
+  }
+
+  if (!isUniformObject(object)) {
+    object.scale.x = clamp(Math.abs(object.scale.x), 0.05, 200);
+    object.scale.y = clamp(Math.abs(object.scale.y), 0.02, 100);
+    object.scale.z = clamp(Math.abs(object.scale.z), 0.05, 200);
+  }
+}
+
 // --------------------------------------------------
-// SELECCIÓN CON CLIC
+// LISTA DE ESCENA
+// --------------------------------------------------
+
+function refreshSceneList() {
+  sceneList.replaceChildren();
+
+  for (const object of state.objects) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className =
+      `scene-row${object === state.selected ? " selected" : ""}`;
+
+    const icon = document.createElement("span");
+    icon.className = "scene-icon";
+    icon.textContent =
+      isBuilding(object)
+        ? "B"
+        : (PROP_CATALOG[object.userData.propType]?.label || "P").slice(0, 1);
+
+    const name = document.createElement("span");
+    name.className = "scene-name";
+    name.textContent = object.name;
+
+    const type = document.createElement("span");
+    type.className = "scene-type";
+    type.textContent =
+      isBuilding(object)
+        ? "edif."
+        : PROP_CATALOG[object.userData.propType]?.label.toLowerCase() || "prop";
+
+    row.append(icon, name, type);
+
+    row.addEventListener("click", () => {
+      selectObject(object);
+    });
+
+    sceneList.appendChild(row);
+  }
+
+  objectCount.textContent =
+    String(state.objects.length);
+
+  if (state.objects.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-properties";
+    empty.textContent = "La escena está vacía.";
+    sceneList.appendChild(empty);
+  }
+}
+
+// --------------------------------------------------
+// PROPIEDADES
+// --------------------------------------------------
+
+function updatePropertiesFromSelection() {
+  const object = state.selected;
+  const hasSelection = Boolean(object);
+
+  emptyProperties.classList.toggle("hidden", hasSelection);
+  propertiesContent.classList.toggle("hidden", !hasSelection);
+
+  if (!object) {
+    propertiesKind.textContent = "SELECCIÓN";
+    propertiesTitle.textContent = "Sin selección";
+    selectionStatus.textContent = "Ningún objeto seleccionado";
+    return;
+  }
+
+  propertiesKind.textContent = objectKindLabel(object);
+  propertiesTitle.textContent = object.name;
+  selectionStatus.textContent = `${object.name} seleccionado`;
+
+  objectNameInput.value = object.name;
+
+  const uniform = isUniformObject(object);
+
+  dimensionFields.classList.toggle("hidden", uniform);
+  uniformSizeFields.classList.toggle("hidden", !uniform);
+
+  if (uniform) {
+    const percentage =
+      Math.round(object.scale.x * 100);
+
+    uniformSizeInput.value = String(
+      clamp(percentage, 25, 300)
+    );
+
+    uniformSizeValue.textContent =
+      `${percentage}%`;
+  } else {
+    const dimensions = getEditableDimensions(object);
+
+    widthInput.value = round2(dimensions.x);
+    heightInput.value = round2(dimensions.y);
+    depthInput.value = round2(dimensions.z);
+  }
+
+  positionXInput.value = round2(object.position.x);
+  positionYInput.value = round2(object.position.y);
+  positionZInput.value = round2(object.position.z);
+
+  // Props viven en el plano y no necesitan Y manual.
+  positionYInput.disabled = !isBuilding(object);
+
+  rotationYInput.value =
+    round2(degrees(object.rotation.y));
+}
+
+function getEditableDimensions(object) {
+  if (isBuilding(object)) {
+    return object.scale;
+  }
+
+  const base =
+    object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
+
+  return {
+    x: base.x * object.scale.x,
+    y: base.y * object.scale.y,
+    z: base.z * object.scale.z,
+  };
+}
+
+function setEditableDimensions(object, width, height, depth) {
+  if (isBuilding(object)) {
+    object.scale.set(width, height, depth);
+    return;
+  }
+
+  const base =
+    object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
+
+  object.scale.set(
+    width / base.x,
+    height / base.y,
+    depth / base.z
+  );
+}
+
+function applyDimensionsFromInputs() {
+  const object = state.selected;
+
+  if (!object || isUniformObject(object)) {
+    return;
+  }
+
+  const current =
+    getEditableDimensions(object);
+
+  const width = clamp(
+    numberOrFallback(widthInput.value, current.x),
+    0.1,
+    200
+  );
+
+  const height = clamp(
+    numberOrFallback(heightInput.value, current.y),
+    0.02,
+    100
+  );
+
+  const depth = clamp(
+    numberOrFallback(depthInput.value, current.z),
+    0.1,
+    200
+  );
+
+  setEditableDimensions(
+    object,
+    width,
+    height,
+    depth
+  );
+
+  updateSelectionBox();
+  updatePropertiesFromSelection();
+}
+
+function applyPositionFromInputs() {
+  const object = state.selected;
+
+  if (!object) {
+    return;
+  }
+
+  object.position.x = clamp(
+    numberOrFallback(positionXInput.value, object.position.x),
+    -250,
+    250
+  );
+
+  object.position.z = clamp(
+    numberOrFallback(positionZInput.value, object.position.z),
+    -250,
+    250
+  );
+
+  object.position.y = isBuilding(object)
+    ? clamp(
+        numberOrFallback(positionYInput.value, object.position.y),
+        -50,
+        120
+      )
+    : 0;
+
+  updateSelectionBox();
+  updatePropertiesFromSelection();
+}
+
+function applyRotationFromInput() {
+  const object = state.selected;
+
+  if (!object) {
+    return;
+  }
+
+  const angle = clamp(
+    numberOrFallback(
+      rotationYInput.value,
+      degrees(object.rotation.y)
+    ),
+    -360,
+    360
+  );
+
+  object.rotation.y = radians(angle);
+
+  updateSelectionBox();
+  updatePropertiesFromSelection();
+}
+
+function applyUniformSize(percentage) {
+  const object = state.selected;
+
+  if (!object || !isUniformObject(object)) {
+    return;
+  }
+
+  const scale = clamp(
+    percentage / 100,
+    0.25,
+    3
+  );
+
+  object.scale.setScalar(scale);
+  state.lastUniformScale = scale;
+
+  uniformSizeValue.textContent =
+    `${Math.round(scale * 100)}%`;
+
+  updateSelectionBox();
+}
+
+// --------------------------------------------------
+// RAYCAST / CLIC
 // --------------------------------------------------
 
 function pointerToNdc(event) {
-  const rect = renderer.domElement.getBoundingClientRect();
+  const rect =
+    renderer.domElement.getBoundingClientRect();
 
   pointer.x =
     ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -678,25 +1038,49 @@ function pointerToNdc(event) {
     -((event.clientY - rect.top) / rect.height) * 2 + 1;
 }
 
-function pickBuilding(event) {
-  // Si el puntero está sobre un eje del manipulador,
-  // TransformControls debe recibir el clic y no la selección.
+function editorRootFromHit(object) {
+  let current = object;
+
+  while (current) {
+    if (state.objects.includes(current)) {
+      return current;
+    }
+
+    if (
+      current.userData?.editorRoot &&
+      state.objects.includes(current.userData.editorRoot)
+    ) {
+      return current.userData.editorRoot;
+    }
+
+    current = current.parent;
+  }
+
+  return null;
+}
+
+function pickObject(event) {
   if (transformControls.axis) {
     return;
   }
 
   pointerToNdc(event);
-
   raycaster.setFromCamera(pointer, camera);
 
   const intersections =
-    raycaster.intersectObjects(state.buildings, false);
+    raycaster.intersectObjects(state.objects, true);
 
-  if (intersections.length > 0) {
-    selectBuilding(intersections[0].object);
-  } else {
-    deselectBuilding();
+  for (const intersection of intersections) {
+    const root =
+      editorRootFromHit(intersection.object);
+
+    if (root) {
+      selectObject(root);
+      return;
+    }
   }
+
+  deselectObject();
 }
 
 // --------------------------------------------------
@@ -744,52 +1128,54 @@ function setGridVisible(visible) {
 // --------------------------------------------------
 
 function installEvents() {
-  resizeObserver = new ResizeObserver(resizeViewport);
+  resizeObserver =
+    new ResizeObserver(resizeViewport);
+
   resizeObserver.observe(viewport);
 
-  renderer.domElement.addEventListener("pointerdown", (event) => {
-    state.pointerDown = {
-      x: event.clientX,
-      y: event.clientY,
-      time: performance.now(),
-    };
-  });
+  renderer.domElement.addEventListener(
+    "pointerdown",
+    (event) => {
+      state.pointerDown = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+    }
+  );
 
-  renderer.domElement.addEventListener("pointerup", (event) => {
-    if (!state.pointerDown || transformControls.dragging) {
+  renderer.domElement.addEventListener(
+    "pointerup",
+    (event) => {
+      if (
+        !state.pointerDown ||
+        transformControls.dragging
+      ) {
+        state.pointerDown = null;
+        return;
+      }
+
+      const dx =
+        event.clientX - state.pointerDown.x;
+
+      const dy =
+        event.clientY - state.pointerDown.y;
+
+      const moved =
+        Math.hypot(dx, dy);
+
       state.pointerDown = null;
-      return;
+
+      if (moved <= 5) {
+        pickObject(event);
+      }
     }
+  );
 
-    const dx = event.clientX - state.pointerDown.x;
-    const dy = event.clientY - state.pointerDown.y;
-    const moved = Math.hypot(dx, dy);
-
-    state.pointerDown = null;
-
-    // Solo consideramos selección cuando fue realmente un clic/tap,
-    // no después de arrastrar la cámara.
-    if (moved <= 5) {
-      pickBuilding(event);
-    }
-  });
-
-  addBuildingButton.addEventListener("click", () => {
-    const offset = state.buildings.length * 1.25;
-
-    createBuilding({
-      width: 6,
-      height: 3,
-      depth: 5,
-      x: clamp(offset, -25, 25),
-      y: 1.5,
-      z: clamp(offset, -25, 25),
-      select: true,
+  for (const button of libraryButtons) {
+    button.addEventListener("click", () => {
+      createFromLibrary(button.dataset.create);
     });
-  });
-
-  duplicateButton.addEventListener("click", duplicateSelectedBuilding);
-  deleteButton.addEventListener("click", deleteSelectedBuilding);
+  }
 
   for (const button of modeButtons) {
     button.addEventListener("click", () => {
@@ -797,94 +1183,166 @@ function installEvents() {
     });
   }
 
-  buildingNameInput.addEventListener("input", () => {
+  objectNameInput.addEventListener("input", () => {
     if (!state.selected) {
       return;
     }
 
-    const value = buildingNameInput.value.trim();
+    const value =
+      objectNameInput.value.trim();
 
-    if (value) {
-      state.selected.name = value;
-      propertiesTitle.textContent = value;
-      selectionStatus.textContent = `${value} seleccionado`;
-      renderBuildingList();
-    }
-  });
-
-  for (const input of [widthInput, heightInput, depthInput]) {
-    input.addEventListener("change", applyDimensionsFromInputs);
-  }
-
-  for (const input of [positionXInput, positionYInput, positionZInput]) {
-    input.addEventListener("change", applyPositionFromInputs);
-  }
-
-  rotationYInput.addEventListener("change", applyRotationFromInput);
-
-  gridOpacityInput.addEventListener("input", (event) => {
-    const percentage = Number(event.target.value);
-    setGridOpacity(percentage / 100);
-    gridOpacityValue.textContent = `${percentage}%`;
-  });
-
-  gridToggle.addEventListener("click", () => {
-    setGridVisible(!state.gridVisible);
-  });
-
-  resetViewButton.addEventListener("click", resetView);
-  topViewButton.addEventListener("click", setTopView);
-
-  window.addEventListener("keydown", (event) => {
-    if (isEditingField()) {
+    if (!value) {
       return;
     }
 
-    const key = event.key.toLowerCase();
-
-    if (key === "w") {
-      setTransformMode("translate");
-    }
-
-    if (key === "e") {
-      setTransformMode("rotate");
-    }
-
-    if (key === "r") {
-      setTransformMode("scale");
-    }
-
-    if (key === "escape") {
-      deselectBuilding();
-    }
-
-    if (
-      (event.key === "Delete" || event.key === "Backspace") &&
-      state.selected
-    ) {
-      event.preventDefault();
-      deleteSelectedBuilding();
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      key === "d" &&
-      state.selected
-    ) {
-      event.preventDefault();
-      duplicateSelectedBuilding();
-    }
+    state.selected.name = value;
+    propertiesTitle.textContent = value;
+    selectionStatus.textContent = `${value} seleccionado`;
+    refreshSceneList();
   });
 
-  document.addEventListener("visibilitychange", () => {
-    isPageVisible = !document.hidden;
+  for (const input of [
+    widthInput,
+    heightInput,
+    depthInput,
+  ]) {
+    input.addEventListener(
+      "change",
+      applyDimensionsFromInputs
+    );
+  }
 
-    if (isPageVisible && !animationFrame) {
-      startAnimation();
+  for (const input of [
+    positionXInput,
+    positionYInput,
+    positionZInput,
+  ]) {
+    input.addEventListener(
+      "change",
+      applyPositionFromInputs
+    );
+  }
+
+  rotationYInput.addEventListener(
+    "change",
+    applyRotationFromInput
+  );
+
+  uniformSizeInput.addEventListener(
+    "input",
+    (event) => {
+      applyUniformSize(
+        Number(event.target.value)
+      );
     }
-  });
+  );
 
-  window.addEventListener("pagehide", cleanup, { once: true });
+  duplicateButton.addEventListener(
+    "click",
+    duplicateSelectedObject
+  );
+
+  deleteButton.addEventListener(
+    "click",
+    deleteSelectedObject
+  );
+
+  gridOpacityInput.addEventListener(
+    "input",
+    (event) => {
+      const percentage =
+        Number(event.target.value);
+
+      setGridOpacity(percentage / 100);
+
+      gridOpacityValue.textContent =
+        `${percentage}%`;
+    }
+  );
+
+  gridToggle.addEventListener(
+    "click",
+    () => {
+      setGridVisible(!state.gridVisible);
+    }
+  );
+
+  resetViewButton.addEventListener(
+    "click",
+    resetView
+  );
+
+  topViewButton.addEventListener(
+    "click",
+    setTopView
+  );
+
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (isEditingField()) {
+        return;
+      }
+
+      const key =
+        event.key.toLowerCase();
+
+      if (key === "w") {
+        setTransformMode("translate");
+      }
+
+      if (key === "e") {
+        setTransformMode("rotate");
+      }
+
+      if (key === "r") {
+        setTransformMode("scale");
+      }
+
+      if (key === "escape") {
+        deselectObject();
+      }
+
+      if (
+        (event.key === "Delete" ||
+          event.key === "Backspace") &&
+        state.selected
+      ) {
+        event.preventDefault();
+        deleteSelectedObject();
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        key === "d" &&
+        state.selected
+      ) {
+        event.preventDefault();
+        duplicateSelectedObject();
+      }
+    }
+  );
+
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      isPageVisible =
+        !document.hidden;
+
+      if (
+        isPageVisible &&
+        !animationFrame
+      ) {
+        startAnimation();
+      }
+    }
+  );
+
+  window.addEventListener(
+    "pagehide",
+    cleanup,
+    { once: true }
+  );
 }
 
 // --------------------------------------------------
@@ -896,12 +1354,21 @@ function resizeViewport() {
     return;
   }
 
-  const width = Math.max(1, viewport.clientWidth);
-  const height = Math.max(1, viewport.clientHeight);
+  const width =
+    Math.max(1, viewport.clientWidth);
 
-  renderer.setSize(width, height, false);
+  const height =
+    Math.max(1, viewport.clientHeight);
 
-  camera.aspect = width / height;
+  renderer.setSize(
+    width,
+    height,
+    false
+  );
+
+  camera.aspect =
+    width / height;
+
   camera.updateProjectionMatrix();
 }
 
@@ -916,7 +1383,8 @@ function startAnimation() {
       return;
     }
 
-    animationFrame = requestAnimationFrame(loop);
+    animationFrame =
+      requestAnimationFrame(loop);
 
     mapControls.update();
     selectionBox?.update();
@@ -924,7 +1392,8 @@ function startAnimation() {
     renderer.render(scene, camera);
   };
 
-  animationFrame = requestAnimationFrame(loop);
+  animationFrame =
+    requestAnimationFrame(loop);
 }
 
 function cleanup() {
@@ -937,21 +1406,40 @@ function cleanup() {
   mapControls?.dispose();
   transformControls?.dispose();
 
-  scene?.traverse((object) => {
-    object.geometry?.dispose?.();
+  for (const object of state.objects) {
+    if (isBuilding(object)) {
+      object.traverse((child) => {
+        child.geometry?.dispose?.();
 
-    if (object.material) {
-      const materials =
-        Array.isArray(object.material)
-          ? object.material
-          : [object.material];
+        if (child.material) {
+          const materials =
+            Array.isArray(child.material)
+              ? child.material
+              : [child.material];
 
-      for (const material of materials) {
-        material.dispose?.();
-      }
+          for (const material of materials) {
+            material.dispose?.();
+          }
+        }
+      });
     }
-  });
+  }
 
+  ground?.geometry?.dispose?.();
+  ground?.material?.dispose?.();
+
+  const gridMaterials =
+    grid && Array.isArray(grid.material)
+      ? grid.material
+      : grid?.material
+        ? [grid.material]
+        : [];
+
+  for (const material of gridMaterials) {
+    material.dispose?.();
+  }
+
+  disposePropLibrary();
   renderer?.dispose();
 }
 
@@ -961,7 +1449,9 @@ function cleanup() {
 
 try {
   if (!viewport) {
-    throw new Error("No se encontró el área de trabajo 3D.");
+    throw new Error(
+      "No se encontró el área de trabajo 3D."
+    );
   }
 
   if (!canUseWebGL()) {
@@ -972,7 +1462,10 @@ try {
 
   createScene();
 } catch (error) {
-  console.error("[Resort Map Builder]", error);
+  console.error(
+    "[Resort Map Builder]",
+    error
+  );
 
   showFatalError(
     error instanceof Error
