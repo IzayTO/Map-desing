@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.5";
-import { setupMobilePanels } from "./ui.js?v=6.5";
-import { createPlacementController } from "./placement.js?v=6.5";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.5";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.5.1";
+import { setupMobilePanels } from "./ui.js?v=6.5.1";
+import { createPlacementController } from "./placement.js?v=6.5.1";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.5.1";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.5";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.5";
+} from "./snap.js?v=6.5.1";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.5.1";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.5";
+} from "./project-io.js?v=6.5.1";
 
 window.__RMB_READY__ = false;
 
@@ -522,15 +522,18 @@ function magnetizePointXZ(x, z) {
 }
 
 function applyGroundSnapToObject(object) {
-  if (!object || !canMoveY(object)) {
+  if (!object || !canMoveY(object) || !state.groundSnapEnabled) {
     return false;
   }
 
-  if (
-    state.groundSnapEnabled &&
-    Math.abs(object.position.y) <= (state.groundSnapThreshold || 0)
-  ) {
-    object.position.y = 0;
+  object.updateWorldMatrix(true, true);
+
+  const box = new THREE.Box3().setFromObject(object);
+  const bottom = box.min.y;
+  const threshold = state.groundSnapThreshold || 0;
+
+  if (Math.abs(bottom) <= threshold) {
+    object.position.y -= bottom;
     return true;
   }
 
@@ -1062,20 +1065,23 @@ function createGround() {
       color: 0xf8f8f4,
       roughness: 1,
       metalness: 0,
-      side: THREE.DoubleSide,
-      transparent: true,
+      side: THREE.FrontSide,
+      transparent: state.groundOpacity < 0.999,
       opacity: state.groundOpacity,
+      depthWrite: state.groundOpacity >= 0.999,
+      depthTest: true,
     })
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.02;
+  ground.position.y = -0.025;
+  ground.renderOrder = -30;
   scene.add(ground);
 
   referencePlane = new THREE.Mesh(
     new THREE.PlaneGeometry(140, 140),
     new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       transparent: true,
       opacity: state.referenceImage.opacity,
       depthWrite: false,
@@ -1087,7 +1093,7 @@ function createGround() {
   );
   referencePlane.rotation.x = -Math.PI / 2;
   referencePlane.position.y = -0.008;
-  referencePlane.renderOrder = 1;
+  referencePlane.renderOrder = -20;
   referencePlane.raycast = () => {};
   scene.add(referencePlane);
 }
@@ -1099,7 +1105,9 @@ function createGrid() {
     material.transparent = true;
     material.opacity = state.gridOpacity;
     material.depthWrite = false;
+    material.depthTest = true;
   }
+  grid.renderOrder = -10;
   scene.add(grid);
 }
 
@@ -1142,6 +1150,23 @@ function createMapControls() {
   mapControls.minPolarAngle = Math.PI * 0.055;
   mapControls.maxPolarAngle = Math.PI * 0.495;
   mapControls.target.copy(INITIAL_TARGET);
+
+  mapControls.addEventListener("change", () => {
+    // MapControls can accumulate a small Y offset during touch panning.
+    // Remove only that vertical component while preserving X/Z panning.
+    const targetY = mapControls.target.y;
+
+    if (Math.abs(targetY) > 0.00001) {
+      mapControls.target.y = 0;
+      camera.position.y -= targetY;
+    }
+
+    // Hard safety floor. The camera must never cross below the map.
+    if (camera.position.y < 0.35) {
+      camera.position.y = 0.35;
+    }
+  });
+
   mapControls.update();
 }
 
@@ -2014,6 +2039,9 @@ function setGridOpacity(value) {
 function setGroundOpacity(value) {
   state.groundOpacity = value;
   ground.material.opacity = value;
+  ground.material.transparent = value < 0.999;
+  ground.material.depthWrite = value >= 0.999;
+  ground.material.needsUpdate = true;
 }
 
 
@@ -2544,6 +2572,17 @@ function startAnimation() {
 
     animationFrame = requestAnimationFrame(loop);
     mapControls.update();
+
+    if (mapControls.target.y !== 0) {
+      const targetY = mapControls.target.y;
+      mapControls.target.y = 0;
+      camera.position.y -= targetY;
+    }
+
+    if (camera.position.y < 0.35) {
+      camera.position.y = 0.35;
+    }
+
     selectionBox?.update();
     renderer.render(scene, camera);
   };

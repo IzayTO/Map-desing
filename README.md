@@ -1,26 +1,21 @@
-# Resort Map Builder · Parte 6.5
+# Resort Map Builder · Parte 6.5.1
 
-Esta versión conserva toda la Parte 6.4 y modifica únicamente navegación táctil / cámara móvil.
+Corrección puntual de la Parte 6.5.
 
-## Gestos en iPhone / iPad
+## Problema corregido
 
-- **1 dedo + arrastrar:** orbitar / girar alrededor del punto observado.
-- **2 dedos + arrastrar:** desplazar el plano lateralmente.
-- **Pellizcar con 2 dedos:** acercar o alejar.
-- **Toque corto:** sigue sirviendo para seleccionar o colocar objetos.
+Al orbitar en teléfono, el objetivo de la cámara podía adquirir un desplazamiento vertical.
+En ciertos ángulos eso colocaba la cámara virtual por debajo del plano, haciendo que el
+suelo pareciera una capa delante de los edificios.
 
-Los controles de mouse y teclado de escritorio no cambian.
+## Cambios
 
-## Botón flotante de cámara
-
-En móvil aparece un botón flotante con una flecha circular sobre la barra inferior.
-Al tocarlo vuelve directamente a la vista 3D predeterminada y centra el plano.
-
-## Conservado
-
-- Imagen guía proporcional y escalable.
-- Guardar/cargar `resort.json`.
-- Imán de cuadrícula, objetos y suelo.
-- Props y escaleras.
-- Bloqueo, opacidad y escalado desde un lado.
-- Controles PC existentes.
+- La cámara ya no puede cruzar por debajo del plano.
+- El desplazamiento con dos dedos se mantiene sobre X/Z, sin deriva vertical.
+- El suelo solo se renderiza por su cara superior.
+- La imagen guía también solo se renderiza desde la parte superior.
+- El suelo y la retícula no escriben profundidad de forma que oculten objetos transparentes.
+- La opacidad del plano actualiza correctamente su comportamiento de profundidad.
+- La atracción al suelo ahora usa la base real de la geometría, no solo el punto central.
+- Todo lo demás de la 6.5 se conserva: gestos, botón flotante, PC, imagen guía,
+  imanes, guardado/carga, props y controles.
