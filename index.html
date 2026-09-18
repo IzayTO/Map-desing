@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 6.1 · constructor ampliado con escalado anclado, imanes y arquitectura."
+    content="Resort Map Builder · Parte 6.2 · imagen guía, imanes configurables y ajustes de suelo."
   />
-  <title>Resort Map Builder · Parte 6.1</title>
+  <title>Resort Map Builder · Parte 6.2</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=6.1" />
+  <link rel="stylesheet" href="./style.css?v=6.2" />
 
   <script type="importmap">
   {
@@ -54,6 +54,11 @@
 
     <main class="workspace" aria-label="Constructor 3D">
       <div id="viewport" aria-label="Plano tridimensional interactivo"></div>
+
+      <div class="alignment-guides" id="alignmentGuides" aria-hidden="true">
+        <div class="alignment-guide vertical hidden" id="alignmentGuideX"></div>
+        <div class="alignment-guide horizontal hidden" id="alignmentGuideZ"></div>
+      </div>
 
       <div class="workspace-badge" aria-hidden="true">
         <strong>Plano 3D</strong>
@@ -455,38 +460,78 @@
         </div>
 
         <div class="project-content">
-          <div class="project-setting">
+          <div class="project-setting stacked">
             <div>
               <strong>Imán de cuadrícula</strong>
-              <small>Se pega suavemente a líneas cada 2 m cuando estás cerca.</small>
+              <small>Qué tan cerca debe estar un objeto de una línea para pegarse.</small>
             </div>
-
-            <button
-              class="project-switch"
-              id="snapToggle"
-              type="button"
-              role="switch"
-              aria-checked="false"
-            >
-              Libre
-            </button>
+            <select class="project-select" id="snapToggle">
+              <option value="0">Libre</option>
+              <option value="0.15">Muy corto · 0.15 m</option>
+              <option value="0.3" selected>Corto · 0.30 m</option>
+              <option value="0.6">Medio · 0.60 m</option>
+              <option value="1">Amplio · 1.00 m</option>
+            </select>
           </div>
-          <div class="project-setting">
+
+          <div class="project-setting stacked">
             <div>
               <strong>Imán entre objetos</strong>
-              <small>Alinea bordes y centros cuando dos piezas quedan muy cerca.</small>
+              <small>Alinea bordes, márgenes y centros cuando dos piezas quedan cerca.</small>
             </div>
+            <select class="project-select" id="objectSnapToggle">
+              <option value="0">Apagado</option>
+              <option value="0.15">Muy corto · 0.15 m</option>
+              <option value="0.3" selected>Corto · 0.30 m</option>
+              <option value="0.6">Medio · 0.60 m</option>
+              <option value="1">Amplio · 1.00 m</option>
+            </select>
+          </div>
 
-            <button
-              class="project-switch"
-              id="objectSnapToggle"
-              type="button"
-              role="switch"
-              aria-checked="false"
-            >
-              Apagado
+          <div class="project-setting stacked">
+            <div>
+              <strong>Atracción al suelo</strong>
+              <small>Si un objeto queda muy cerca de Y = 0, cae suavemente al suelo.</small>
+            </div>
+            <select class="project-select" id="groundSnapToggle">
+              <option value="0">Apagado</option>
+              <option value="0.05">Muy corto · 0.05 m</option>
+              <option value="0.15" selected>Corto · 0.15 m</option>
+              <option value="0.3">Medio · 0.30 m</option>
+              <option value="0.6">Amplio · 0.60 m</option>
+            </select>
+          </div>
+
+          <div class="project-divider"></div>
+
+          <div class="project-setting">
+            <div>
+              <strong>Imagen guía</strong>
+              <small>Se coloca como capa bloqueada sobre el plano para construir encima.</small>
+            </div>
+            <button class="project-switch" id="referenceVisibleToggle" type="button" role="switch" aria-checked="true">Visible</button>
+          </div>
+
+          <div class="project-actions project-actions-reference">
+            <button class="project-button primary" id="loadReferenceImage" type="button">
+              <span aria-hidden="true">🖼</span>
+              Cargar imagen guía
+            </button>
+            <button class="project-button" id="clearReferenceImage" type="button">
+              <span aria-hidden="true">✕</span>
+              Quitar imagen
             </button>
           </div>
+
+          <div class="view-slider compact-slider">
+            <div class="control-row">
+              <span>Opacidad imagen guía</span>
+              <span id="referenceOpacityValue">55%</span>
+            </div>
+            <input id="referenceOpacity" type="range" min="0" max="100" value="55" />
+          </div>
+
+          <input id="referenceImageInput" class="hidden" type="file" accept="image/*" />
 
           <div class="project-divider"></div>
 
@@ -510,7 +555,7 @@
           />
 
           <p class="project-message" id="projectMessage" aria-live="polite">
-            Se guardan objetos, escaleras, bloqueos, opacidad, cámara e imanes.
+            Se guardan objetos, escaleras, imanes y la imagen guía si la cargas.
           </p>
         </div>
       </section>
@@ -544,7 +589,7 @@
         <span><b>R:</b> escalar</span>
         <span><b>Ctrl/Cmd + D:</b> duplicar</span>
         <span><b>Colocar:</b> toca el plano · ✓ termina</span>
-        <span><b>Imán:</b> Proyecto → Imán</span>
+        <span><b>Imanes:</b> Proyecto → selectores</span>
         <span><b>Shift + escalar:</b> fija el lado opuesto</span>
       </div>
 
@@ -609,12 +654,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 6.1 · Constructor ampliado</span>
+      <span>Parte 6.2 · Imagen guía + imanes</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=6.1"></script>
+  <script type="module" src="./app.js?v=6.2"></script>
 </body>
 </html>

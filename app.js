@@ -1,29 +1,31 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.1";
-import { setupMobilePanels } from "./ui.js?v=6.1";
-import { createPlacementController } from "./placement.js?v=6.1";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.1";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.2";
+import { setupMobilePanels } from "./ui.js?v=6.2";
+import { createPlacementController } from "./placement.js?v=6.2";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.2";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.1";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.1";
+} from "./snap.js?v=6.2";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.2";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.1";
+} from "./project-io.js?v=6.2";
 
 window.__RMB_READY__ = false;
 
 // DOM
 const viewport = document.querySelector("#viewport");
+const alignmentGuideX = document.querySelector("#alignmentGuideX");
+const alignmentGuideZ = document.querySelector("#alignmentGuideZ");
 const statusDot = document.querySelector("#statusDot");
 const statusText = document.querySelector("#statusText");
 const selectionStatus = document.querySelector("#selectionStatus");
@@ -50,6 +52,13 @@ const desktopHelpClose = document.querySelector("#desktopHelpClose");
 
 const snapToggle = document.querySelector("#snapToggle");
 const objectSnapToggle = document.querySelector("#objectSnapToggle");
+const groundSnapToggle = document.querySelector("#groundSnapToggle");
+const loadReferenceImageButton = document.querySelector("#loadReferenceImage");
+const clearReferenceImageButton = document.querySelector("#clearReferenceImage");
+const referenceImageInput = document.querySelector("#referenceImageInput");
+const referenceVisibleToggle = document.querySelector("#referenceVisibleToggle");
+const referenceOpacityInput = document.querySelector("#referenceOpacity");
+const referenceOpacityValue = document.querySelector("#referenceOpacityValue");
 const saveProjectButton = document.querySelector("#saveProject");
 const loadProjectButton = document.querySelector("#loadProject");
 const projectFileInput = document.querySelector("#projectFileInput");
@@ -127,9 +136,18 @@ const state = {
   pointerDown: null,
   lastUniformScale: 1,
   viewMode: "perspective",
-  snapEnabled: false,
-  objectSnapEnabled: false,
+  snapEnabled: true,
+  snapThreshold: 0.3,
+  objectSnapEnabled: true,
+  objectSnapThreshold: 0.3,
+  groundSnapEnabled: true,
+  groundSnapThreshold: 0.15,
   oneSidedScaleEnabled: false,
+  referenceImage: {
+    dataUrl: null,
+    opacity: 0.55,
+    visible: true,
+  },
 };
 
 let scene;
@@ -139,6 +157,8 @@ let mapControls;
 let transformControls;
 let transformHelper;
 let ground;
+let referencePlane;
+let referenceTexture;
 let grid;
 let selectionBox;
 let mobilePanels;
@@ -175,6 +195,52 @@ function radians(deg) {
 
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+
+function formatThresholdLabel(value, off = "Apagado") {
+  const n = Number(value) || 0;
+  return n <= 0 ? off : `${n.toFixed(2)} m`;
+}
+
+function hideAlignmentGuides() {
+  alignmentGuideX?.classList.add("hidden");
+  alignmentGuideZ?.classList.add("hidden");
+}
+
+function projectWorldToViewport(vector) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const projected = vector.clone().project(camera);
+  return {
+    x: ((projected.x + 1) * 0.5) * rect.width,
+    y: ((1 - projected.y) * 0.5) * rect.height,
+  };
+}
+
+function showAlignmentGuides(object, snapResult) {
+  if (!object || !snapResult || (!snapResult.snappedX && !snapResult.snappedZ)) {
+    hideAlignmentGuides();
+    return;
+  }
+
+  object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(object);
+  const center = box.getCenter(new THREE.Vector3());
+  const point = projectWorldToViewport(center);
+
+  if (snapResult.snappedX && alignmentGuideX) {
+    alignmentGuideX.style.left = `${point.x}px`;
+    alignmentGuideX.classList.remove('hidden');
+  } else {
+    alignmentGuideX?.classList.add('hidden');
+  }
+
+  if (snapResult.snappedZ && alignmentGuideZ) {
+    alignmentGuideZ.style.top = `${point.y}px`;
+    alignmentGuideZ.classList.remove('hidden');
+  } else {
+    alignmentGuideZ?.classList.add('hidden');
+  }
 }
 
 function isEditingField() {
@@ -323,52 +389,71 @@ function setProjectMessage(message, tone = "neutral") {
 }
 
 function updateSnapUi() {
-  snapToggle?.setAttribute(
-    "aria-checked",
-    String(state.snapEnabled)
-  );
-
   if (snapToggle) {
-    snapToggle.textContent =
-      state.snapEnabled
-        ? `Imán · ${GRID_STEP} m`
-        : "Libre";
+    snapToggle.value = String(state.snapEnabled ? state.snapThreshold : 0);
   }
 
-  objectSnapToggle?.setAttribute(
-    "aria-checked",
-    String(state.objectSnapEnabled)
-  );
-
   if (objectSnapToggle) {
-    objectSnapToggle.textContent =
-      state.objectSnapEnabled
-        ? "Objetos"
-        : "Apagado";
+    objectSnapToggle.value = String(
+      state.objectSnapEnabled ? state.objectSnapThreshold : 0
+    );
+  }
+
+  if (groundSnapToggle) {
+    groundSnapToggle.value = String(
+      state.groundSnapEnabled ? state.groundSnapThreshold : 0
+    );
   }
 }
 
-function setSnapEnabled(enabled) {
+function setSnapEnabled(enabled, threshold = state.snapThreshold) {
   state.snapEnabled = Boolean(enabled);
+  state.snapThreshold = state.snapEnabled
+    ? clamp(Number(threshold) || 0.3, 0.05, 2)
+    : 0;
   updateSnapUi();
+  updateReferenceUi();
+  hideAlignmentGuides();
 
   setProjectMessage(
     state.snapEnabled
-      ? `Imán activado: se ajusta a líneas cada ${GRID_STEP} m al acercarte.`
-      : "Movimiento libre activado.",
+      ? `Imán de cuadrícula activado · alcance ${formatThresholdLabel(state.snapThreshold, 'Libre')}.`
+      : "Imán de cuadrícula apagado.",
     "neutral"
   );
 }
 
-function setObjectSnapEnabled(enabled) {
+function setObjectSnapEnabled(enabled, threshold = state.objectSnapThreshold) {
   state.objectSnapEnabled = Boolean(enabled);
+  state.objectSnapThreshold = state.objectSnapEnabled
+    ? clamp(Number(threshold) || 0.3, 0.05, 2)
+    : 0;
   updateSnapUi();
+  updateReferenceUi();
+  hideAlignmentGuides();
 
   setProjectMessage(
     state.objectSnapEnabled
-      ? "Imán entre objetos activado."
+      ? `Imán entre objetos activado · alcance ${formatThresholdLabel(state.objectSnapThreshold, 'Apagado')}.`
       : "Imán entre objetos apagado.",
     "neutral"
+  );
+}
+
+function setGroundSnapEnabled(enabled, threshold = state.groundSnapThreshold) {
+  state.groundSnapEnabled = Boolean(enabled);
+  state.groundSnapThreshold = state.groundSnapEnabled
+    ? clamp(Number(threshold) || 0.15, 0.01, 2)
+    : 0;
+  updateSnapUi();
+  updateReferenceUi();
+  hideAlignmentGuides();
+
+  setProjectMessage(
+    state.groundSnapEnabled
+      ? `Atracción al suelo activada · alcance ${formatThresholdLabel(state.groundSnapThreshold, 'Apagado')}.`
+      : 'Atracción al suelo apagada.',
+    'neutral'
   );
 }
 
@@ -419,9 +504,25 @@ function magnetizePointXZ(x, z) {
     {
       enabled: state.snapEnabled,
       step: GRID_STEP,
-      threshold: MAGNET_THRESHOLD,
+      threshold: state.snapThreshold || MAGNET_THRESHOLD,
     }
   );
+}
+
+function applyGroundSnapToObject(object) {
+  if (!object || !canMoveY(object)) {
+    return false;
+  }
+
+  if (
+    state.groundSnapEnabled &&
+    Math.abs(object.position.y) <= (state.groundSnapThreshold || 0)
+  ) {
+    object.position.y = 0;
+    return true;
+  }
+
+  return false;
 }
 
 function applyMagnetToObject(
@@ -431,7 +532,11 @@ function applyMagnetToObject(
   } = {}
 ) {
   if (!object) {
-    return;
+    hideAlignmentGuides();
+    return {
+      snappedX: false,
+      snappedZ: false,
+    };
   }
 
   if (state.snapEnabled) {
@@ -444,23 +549,32 @@ function applyMagnetToObject(
     object.position.z = snapped.z;
   }
 
+  let snapResult = {
+    snappedX: false,
+    snappedZ: false,
+  };
+
   if (
     state.objectSnapEnabled &&
     (
       includeObjectSnap ||
-      state.transformMode === "translate"
+      state.transformMode === "translate" ||
+      state.transformMode === "scale"
     )
   ) {
-    snapObjectToObjects(
+    snapResult = snapObjectToObjects(
       object,
       state.objects,
       {
         enabled: true,
         threshold:
-          OBJECT_MAGNET_THRESHOLD,
+          state.objectSnapThreshold || OBJECT_MAGNET_THRESHOLD,
       }
     );
   }
+
+  showAlignmentGuides(object, snapResult);
+  return snapResult;
 }
 
 function serializeEditorObject(object) {
@@ -491,12 +605,21 @@ function serializeProject() {
     ),
     settings: {
       snapEnabled: state.snapEnabled,
+      snapThreshold: state.snapThreshold,
       objectSnapEnabled: state.objectSnapEnabled,
+      objectSnapThreshold: state.objectSnapThreshold,
+      groundSnapEnabled: state.groundSnapEnabled,
+      groundSnapThreshold: state.groundSnapThreshold,
       oneSidedScaleEnabled: state.oneSidedScaleEnabled,
       gridVisible: state.gridVisible,
       gridOpacity: state.gridOpacity,
       groundOpacity: state.groundOpacity,
       viewMode: state.viewMode,
+      referenceImage: {
+        dataUrl: state.referenceImage.dataUrl,
+        visible: state.referenceImage.visible,
+        opacity: state.referenceImage.opacity,
+      },
     },
     camera: {
       position: camera.position.toArray(),
@@ -647,16 +770,42 @@ function restoreProjectSettings(project) {
     `${Math.round(state.groundOpacity * 100)}%`;
 
   setSnapEnabled(
-    project.settings.snapEnabled
+    project.settings.snapEnabled,
+    project.settings.snapThreshold
   );
 
   setObjectSnapEnabled(
-    project.settings.objectSnapEnabled
+    project.settings.objectSnapEnabled,
+    project.settings.objectSnapThreshold
+  );
+
+  setGroundSnapEnabled(
+    project.settings.groundSnapEnabled,
+    project.settings.groundSnapThreshold
   );
 
   setOneSidedScaleEnabled(
     project.settings.oneSidedScaleEnabled
   );
+
+  state.referenceImage = {
+    dataUrl:
+      project.settings.referenceImage?.dataUrl || null,
+    visible:
+      project.settings.referenceImage?.visible !== false,
+    opacity:
+      project.settings.referenceImage?.opacity ?? 0.55,
+  };
+
+  if (state.referenceImage.dataUrl) {
+    loadReferenceTextureFromDataUrl(
+      state.referenceImage.dataUrl
+    ).catch((error) => {
+      console.error('[Resort Map Builder] Imagen guía:', error);
+    });
+  } else {
+    clearReferenceImage();
+  }
 
   camera.position.fromArray(
     project.camera.position
@@ -855,6 +1004,8 @@ function createScene() {
   });
 
   updateSnapUi();
+  updateReferenceUi();
+  hideAlignmentGuides();
 
   // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
   createBuilding({
@@ -897,6 +1048,22 @@ function createGround() {
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   scene.add(ground);
+
+  referencePlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(140, 140),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: state.referenceImage.opacity,
+      depthWrite: false,
+      visible: false,
+    })
+  );
+  referencePlane.rotation.x = -Math.PI / 2;
+  referencePlane.position.y = -0.012;
+  referencePlane.renderOrder = 1;
+  scene.add(referencePlane);
 }
 
 function createGrid() {
@@ -1138,6 +1305,7 @@ function selectObject(object) {
 }
 
 function deselectObject() {
+  hideAlignmentGuides();
   state.selected = null;
   transformControls.detach();
   removeSelectionBox();
@@ -1302,7 +1470,11 @@ function applySelectionConstraints() {
   object.position.x = clamp(object.position.x, -70, 70);
   object.position.z = clamp(object.position.z, -70, 70);
 
-  applyMagnetToObject(object);
+  applyMagnetToObject(object, {
+    includeObjectSnap:
+      state.transformMode === 'translate' ||
+      state.transformMode === 'scale',
+  });
 
   if (canMoveY(object)) {
     object.position.y = clamp(
@@ -1310,6 +1482,8 @@ function applySelectionConstraints() {
       -5,
       40
     );
+
+    applyGroundSnapToObject(object);
   } else {
     object.position.y = 0;
   }
@@ -1415,6 +1589,7 @@ function updatePropertiesFromSelection() {
     propertiesKind.textContent = "SELECCIÓN";
     propertiesTitle.textContent = "Sin selección";
     selectionStatus.textContent = "Ningún objeto seleccionado";
+    hideAlignmentGuides();
     updateOneSidedScaleUi();
     parametricFields.classList.add("hidden");
     return;
@@ -1542,6 +1717,7 @@ function applyDimensionsFromInputs() {
   const depth = clamp(numberOrFallback(depthInput.value, current.z), 0.1, 200);
 
   setEditableDimensions(object, width, height, depth);
+  applySelectionConstraints();
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
@@ -1577,11 +1753,17 @@ function applyPositionFromSliders() {
     }
   );
 
+  applyGroundSnapToObject(object);
+
   positionXInput.value =
     String(object.position.x);
 
   positionZInput.value =
     String(object.position.z);
+
+  if (canMoveY(object)) {
+    positionYInput.value = String(object.position.y);
+  }
 
   positionXValue.textContent = formatMeters(object.position.x);
   positionYValue.textContent = formatMeters(object.position.y);
@@ -1611,6 +1793,7 @@ function applyUniformSize(percentage) {
   const scale = clamp(percentage / 100, 0.25, 3);
   object.scale.setScalar(scale);
   state.lastUniformScale = scale;
+  applySelectionConstraints();
   uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
   updateSelectionBox();
 }
@@ -1644,6 +1827,8 @@ function applyStairSteps(value) {
     object,
     opacity
   );
+
+  applySelectionConstraints();
 
   stairStepsInput.value =
     String(steps);
@@ -1798,6 +1983,110 @@ function setGroundOpacity(value) {
   ground.material.opacity = value;
 }
 
+
+function updateReferenceUi() {
+  if (referenceVisibleToggle) {
+    referenceVisibleToggle.setAttribute(
+      "aria-checked",
+      String(Boolean(state.referenceImage.visible))
+    );
+
+    referenceVisibleToggle.textContent =
+      state.referenceImage.visible
+        ? "Visible"
+        : "Oculta";
+  }
+
+  if (referenceOpacityInput) {
+    referenceOpacityInput.value = String(
+      Math.round((state.referenceImage.opacity || 0) * 100)
+    );
+  }
+
+  if (referenceOpacityValue) {
+    referenceOpacityValue.textContent = `${Math.round((state.referenceImage.opacity || 0) * 100)}%`;
+  }
+}
+
+function applyReferenceImageState() {
+  if (!referencePlane) return;
+
+  referencePlane.visible = Boolean(
+    state.referenceImage.dataUrl && state.referenceImage.visible
+  );
+  referencePlane.material.opacity = state.referenceImage.opacity;
+  referencePlane.material.needsUpdate = true;
+  updateReferenceUi();
+}
+
+function clearReferenceImage() {
+  if (referenceTexture) {
+    referenceTexture.dispose?.();
+    referenceTexture = null;
+  }
+
+  if (referencePlane?.material?.map) {
+    referencePlane.material.map = null;
+  }
+
+  state.referenceImage.dataUrl = null;
+  state.referenceImage.visible = true;
+  state.referenceImage.opacity = 0.55;
+  applyReferenceImageState();
+}
+
+async function readImageFileAsDataUrl(file) {
+  if (!(file instanceof File)) {
+    throw new Error('Selecciona una imagen.');
+  }
+
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error('La imagen supera el límite de 12 MB.');
+  }
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadReferenceTextureFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    if (!dataUrl) {
+      clearReferenceImage();
+      resolve();
+      return;
+    }
+
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      dataUrl,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.minFilter = THREE.LinearFilter;
+
+        if (referenceTexture) {
+          referenceTexture.dispose?.();
+        }
+
+        referenceTexture = texture;
+        referencePlane.material.map = texture;
+        referencePlane.material.needsUpdate = true;
+
+        state.referenceImage.dataUrl = dataUrl;
+        applyReferenceImageState();
+        resolve();
+      },
+      undefined,
+      () => reject(new Error('No se pudo cargar la imagen guía.'))
+    );
+  });
+}
+
 function setGridVisible(visible) {
   state.gridVisible = visible;
   grid.visible = visible;
@@ -1917,22 +2206,67 @@ function installEvents() {
   });
 
   snapToggle?.addEventListener(
-    "click",
+    "change",
     () => {
-      setSnapEnabled(
-        !state.snapEnabled
-      );
+      const value = Number(snapToggle.value) || 0;
+      setSnapEnabled(value > 0, value);
     }
   );
 
   objectSnapToggle?.addEventListener(
-    "click",
+    "change",
     () => {
-      setObjectSnapEnabled(
-        !state.objectSnapEnabled
-      );
+      const value = Number(objectSnapToggle.value) || 0;
+      setObjectSnapEnabled(value > 0, value);
     }
   );
+
+  groundSnapToggle?.addEventListener(
+    "change",
+    () => {
+      const value = Number(groundSnapToggle.value) || 0;
+      setGroundSnapEnabled(value > 0, value);
+    }
+  );
+
+  referenceVisibleToggle?.addEventListener('click', () => {
+    state.referenceImage.visible = !state.referenceImage.visible;
+    applyReferenceImageState();
+  });
+
+  referenceOpacityInput?.addEventListener('input', (event) => {
+    const percentage = Number(event.target.value);
+    state.referenceImage.opacity = percentage / 100;
+    if (referencePlane) {
+      referencePlane.material.opacity = state.referenceImage.opacity;
+    }
+    updateReferenceUi();
+  });
+
+  loadReferenceImageButton?.addEventListener('click', () => {
+    referenceImageInput?.click();
+  });
+
+  clearReferenceImageButton?.addEventListener('click', () => {
+    clearReferenceImage();
+    setProjectMessage('Imagen guía retirada.', 'neutral');
+  });
+
+  referenceImageInput?.addEventListener('change', async () => {
+    const file = referenceImageInput.files?.[0];
+    if (!file) return;
+
+    try {
+      const dataUrl = await readImageFileAsDataUrl(file);
+      await loadReferenceTextureFromDataUrl(dataUrl);
+      setProjectMessage('Imagen guía cargada y ajustada al tamaño del plano.', 'success');
+    } catch (error) {
+      console.error('[Resort Map Builder] Imagen guía:', error);
+      setProjectMessage(error instanceof Error ? error.message : 'No se pudo cargar la imagen guía.', 'error');
+    } finally {
+      referenceImageInput.value = '';
+    }
+  });
 
   saveProjectButton?.addEventListener(
     "click",
@@ -2065,6 +2399,9 @@ function cleanup() {
 
   ground?.geometry?.dispose?.();
   ground?.material?.dispose?.();
+  referencePlane?.geometry?.dispose?.();
+  referenceTexture?.dispose?.();
+  referencePlane?.material?.dispose?.();
 
   const gridMaterials =
     grid && Array.isArray(grid.material)

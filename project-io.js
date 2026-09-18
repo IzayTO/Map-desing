@@ -1,5 +1,5 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 1;
+const VERSION = 2;
 const MAX_OBJECTS = 10000;
 
 function finiteNumber(value, fallback = 0) {
@@ -52,7 +52,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (input.version !== VERSION) {
+  if (![1, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -147,8 +147,30 @@ export function validateProjectDocument(
         ? input.savedAt
         : null,
     settings: {
-      snapEnabled: Boolean(settings.snapEnabled),
-      objectSnapEnabled: Boolean(settings.objectSnapEnabled),
+      snapEnabled:
+        settings.snapEnabled === undefined
+          ? finiteNumber(settings.snapThreshold, 0.3) > 0
+          : Boolean(settings.snapEnabled),
+      snapThreshold: Math.min(
+        2,
+        Math.max(0, finiteNumber(settings.snapThreshold, 0.3))
+      ),
+      objectSnapEnabled:
+        settings.objectSnapEnabled === undefined
+          ? finiteNumber(settings.objectSnapThreshold, 0.3) > 0
+          : Boolean(settings.objectSnapEnabled),
+      objectSnapThreshold: Math.min(
+        2,
+        Math.max(0, finiteNumber(settings.objectSnapThreshold, 0.3))
+      ),
+      groundSnapEnabled:
+        settings.groundSnapEnabled === undefined
+          ? finiteNumber(settings.groundSnapThreshold, 0.15) > 0
+          : Boolean(settings.groundSnapEnabled),
+      groundSnapThreshold: Math.min(
+        2,
+        Math.max(0, finiteNumber(settings.groundSnapThreshold, 0.15))
+      ),
       oneSidedScaleEnabled: Boolean(settings.oneSidedScaleEnabled),
       gridVisible:
         settings.gridVisible === undefined
@@ -166,6 +188,27 @@ export function validateProjectDocument(
         settings.viewMode === "top"
           ? "top"
           : "perspective",
+      referenceImage:
+        settings.referenceImage && typeof settings.referenceImage === "object"
+          ? {
+              dataUrl:
+                typeof settings.referenceImage.dataUrl === "string"
+                  ? settings.referenceImage.dataUrl
+                  : null,
+              visible:
+                settings.referenceImage.visible === undefined
+                  ? true
+                  : Boolean(settings.referenceImage.visible),
+              opacity: Math.min(
+                1,
+                Math.max(0, finiteNumber(settings.referenceImage.opacity, 0.55))
+              ),
+            }
+          : {
+              dataUrl: null,
+              visible: true,
+              opacity: 0.55,
+            },
     },
     camera: {
       position: vector3(camera.position, [42, 36, 48]),
