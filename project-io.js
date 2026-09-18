@@ -1,5 +1,5 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 2;
+const VERSION = 3;
 const MAX_OBJECTS = 10000;
 
 function finiteNumber(value, fallback = 0) {
@@ -52,7 +52,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, VERSION].includes(Number(input.version))) {
+  if (![1, 2, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -203,11 +203,26 @@ export function validateProjectDocument(
                 1,
                 Math.max(0, finiteNumber(settings.referenceImage.opacity, 0.55))
               ),
+              width: Math.min(
+                140,
+                Math.max(5, finiteNumber(settings.referenceImage.width, 140))
+              ),
+              height: Math.min(
+                140,
+                Math.max(5, finiteNumber(settings.referenceImage.height, 140))
+              ),
+              aspectRatio: Math.max(
+                0.05,
+                finiteNumber(settings.referenceImage.aspectRatio, 1)
+              ),
             }
           : {
               dataUrl: null,
               visible: true,
               opacity: 0.55,
+              width: 140,
+              height: 140,
+              aspectRatio: 1,
             },
     },
     camera: {

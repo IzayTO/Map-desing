@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 6.3 · interfaz de escritorio reorganizada e imagen guía corregida."
+    content="Resort Map Builder · Parte 6.4 · imagen guía con proporción libre y ajustes móviles."
   />
-  <title>Resort Map Builder · Parte 6.3</title>
+  <title>Resort Map Builder · Parte 6.4</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=6.3" />
+  <link rel="stylesheet" href="./style.css?v=6.4" />
 
   <script type="importmap">
   {
@@ -531,6 +531,28 @@
             <input id="referenceOpacity" type="range" min="0" max="100" value="55" />
           </div>
 
+          <div class="view-slider compact-slider reference-size-grid">
+            <div class="control-row">
+              <span>Ancho imagen</span>
+              <span id="referenceWidthValue">140.00 m</span>
+            </div>
+            <input id="referenceWidth" type="range" min="5" max="140" step="0.5" value="140" />
+          </div>
+
+          <div class="view-slider compact-slider reference-size-grid">
+            <div class="control-row">
+              <span>Largo imagen</span>
+              <span id="referenceHeightValue">140.00 m</span>
+            </div>
+            <input id="referenceHeight" type="range" min="5" max="140" step="0.5" value="140" />
+          </div>
+
+          <div class="project-actions reference-size-actions">
+            <button class="project-button" id="referenceFitContain" type="button">Encajar</button>
+            <button class="project-button" id="referenceFillPlane" type="button">Llenar plano</button>
+            <button class="project-button" id="referenceResetSize" type="button">Restaurar</button>
+          </div>
+
           <input id="referenceImageInput" class="hidden" type="file" accept="image/*" />
 
           <div class="project-divider"></div>
@@ -654,12 +676,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 6.3 · Escritorio limpio + imagen guía</span>
+      <span>Parte 6.4 · Imagen libre + móvil mejorado</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=6.3"></script>
+  <script type="module" src="./app.js?v=6.4"></script>
 </body>
 </html>

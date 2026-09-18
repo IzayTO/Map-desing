@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.3";
-import { setupMobilePanels } from "./ui.js?v=6.3";
-import { createPlacementController } from "./placement.js?v=6.3";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.3";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.4";
+import { setupMobilePanels } from "./ui.js?v=6.4";
+import { createPlacementController } from "./placement.js?v=6.4";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.4";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.3";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.3";
+} from "./snap.js?v=6.4";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.4";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.3";
+} from "./project-io.js?v=6.4";
 
 window.__RMB_READY__ = false;
 
@@ -59,6 +59,13 @@ const referenceImageInput = document.querySelector("#referenceImageInput");
 const referenceVisibleToggle = document.querySelector("#referenceVisibleToggle");
 const referenceOpacityInput = document.querySelector("#referenceOpacity");
 const referenceOpacityValue = document.querySelector("#referenceOpacityValue");
+const referenceWidthInput = document.querySelector("#referenceWidth");
+const referenceWidthValue = document.querySelector("#referenceWidthValue");
+const referenceHeightInput = document.querySelector("#referenceHeight");
+const referenceHeightValue = document.querySelector("#referenceHeightValue");
+const referenceFitContainButton = document.querySelector("#referenceFitContain");
+const referenceFillPlaneButton = document.querySelector("#referenceFillPlane");
+const referenceResetSizeButton = document.querySelector("#referenceResetSize");
 const saveProjectButton = document.querySelector("#saveProject");
 const loadProjectButton = document.querySelector("#loadProject");
 const projectFileInput = document.querySelector("#projectFileInput");
@@ -147,6 +154,9 @@ const state = {
     dataUrl: null,
     opacity: 0.55,
     visible: true,
+    width: 140,
+    height: 140,
+    aspectRatio: 1,
   },
 };
 
@@ -171,6 +181,7 @@ let isPageVisible = true;
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const REFERENCE_PLANE_SIZE = 140;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -619,6 +630,9 @@ function serializeProject() {
         dataUrl: state.referenceImage.dataUrl,
         visible: state.referenceImage.visible,
         opacity: state.referenceImage.opacity,
+        width: state.referenceImage.width,
+        height: state.referenceImage.height,
+        aspectRatio: state.referenceImage.aspectRatio,
       },
     },
     camera: {
@@ -795,11 +809,18 @@ function restoreProjectSettings(project) {
       project.settings.referenceImage?.visible !== false,
     opacity:
       project.settings.referenceImage?.opacity ?? 0.55,
+    width:
+      project.settings.referenceImage?.width ?? REFERENCE_PLANE_SIZE,
+    height:
+      project.settings.referenceImage?.height ?? REFERENCE_PLANE_SIZE,
+    aspectRatio:
+      project.settings.referenceImage?.aspectRatio ?? 1,
   };
 
   if (state.referenceImage.dataUrl) {
     loadReferenceTextureFromDataUrl(
-      state.referenceImage.dataUrl
+      state.referenceImage.dataUrl,
+      { preserveCurrentSize: true }
     ).catch((error) => {
       console.error('[Resort Map Builder] Imagen guía:', error);
     });
@@ -1109,7 +1130,7 @@ function createMapControls() {
   mapControls.rotateSpeed = 0.58;
   mapControls.zoomSpeed = 0.8;
   mapControls.minDistance = 7;
-  mapControls.maxDistance = 180;
+  mapControls.maxDistance = 320;
   mapControls.minPolarAngle = Math.PI * 0.055;
   mapControls.maxPolarAngle = Math.PI * 0.495;
   mapControls.target.copy(INITIAL_TARGET);
@@ -1961,7 +1982,7 @@ function setPerspectiveView() {
 }
 
 function setTopView() {
-  camera.position.set(0.001, 62, 0.001);
+  camera.position.set(0.001, 92, 0.001);
   mapControls.target.set(0, 0, 0);
   camera.lookAt(mapControls.target);
   mapControls.update();
@@ -1988,6 +2009,61 @@ function setGroundOpacity(value) {
 }
 
 
+function computeReferenceFitSize(aspectRatio = 1) {
+  const safeAspect = Math.max(0.05, Number(aspectRatio) || 1);
+
+  if (safeAspect >= 1) {
+    return {
+      width: REFERENCE_PLANE_SIZE,
+      height: round2(REFERENCE_PLANE_SIZE / safeAspect),
+    };
+  }
+
+  return {
+    width: round2(REFERENCE_PLANE_SIZE * safeAspect),
+    height: REFERENCE_PLANE_SIZE,
+  };
+}
+
+function applyReferenceImageGeometry() {
+  if (!referencePlane) return;
+
+  const width = clamp(
+    numberOrFallback(state.referenceImage.width, REFERENCE_PLANE_SIZE),
+    5,
+    REFERENCE_PLANE_SIZE
+  );
+  const height = clamp(
+    numberOrFallback(state.referenceImage.height, REFERENCE_PLANE_SIZE),
+    5,
+    REFERENCE_PLANE_SIZE
+  );
+
+  state.referenceImage.width = width;
+  state.referenceImage.height = height;
+
+  referencePlane.scale.set(
+    width / REFERENCE_PLANE_SIZE,
+    height / REFERENCE_PLANE_SIZE,
+    1
+  );
+}
+
+function fitReferenceImageToPlane() {
+  const fitted = computeReferenceFitSize(state.referenceImage.aspectRatio);
+  state.referenceImage.width = fitted.width;
+  state.referenceImage.height = fitted.height;
+  applyReferenceImageGeometry();
+  updateReferenceUi();
+}
+
+function fillReferenceImageToPlane() {
+  state.referenceImage.width = REFERENCE_PLANE_SIZE;
+  state.referenceImage.height = REFERENCE_PLANE_SIZE;
+  applyReferenceImageGeometry();
+  updateReferenceUi();
+}
+
 function updateReferenceUi() {
   if (referenceVisibleToggle) {
     referenceVisibleToggle.setAttribute(
@@ -2010,6 +2086,26 @@ function updateReferenceUi() {
   if (referenceOpacityValue) {
     referenceOpacityValue.textContent = `${Math.round((state.referenceImage.opacity || 0) * 100)}%`;
   }
+
+  if (referenceWidthInput) {
+    referenceWidthInput.value = String(
+      clamp(numberOrFallback(state.referenceImage.width, REFERENCE_PLANE_SIZE), 5, REFERENCE_PLANE_SIZE)
+    );
+  }
+
+  if (referenceWidthValue) {
+    referenceWidthValue.textContent = `${clamp(numberOrFallback(state.referenceImage.width, REFERENCE_PLANE_SIZE), 5, REFERENCE_PLANE_SIZE).toFixed(2)} m`;
+  }
+
+  if (referenceHeightInput) {
+    referenceHeightInput.value = String(
+      clamp(numberOrFallback(state.referenceImage.height, REFERENCE_PLANE_SIZE), 5, REFERENCE_PLANE_SIZE)
+    );
+  }
+
+  if (referenceHeightValue) {
+    referenceHeightValue.textContent = `${clamp(numberOrFallback(state.referenceImage.height, REFERENCE_PLANE_SIZE), 5, REFERENCE_PLANE_SIZE).toFixed(2)} m`;
+  }
 }
 
 function applyReferenceImageState() {
@@ -2019,6 +2115,7 @@ function applyReferenceImageState() {
     state.referenceImage.dataUrl && state.referenceImage.visible
   );
 
+  applyReferenceImageGeometry();
   referencePlane.visible = shouldShow;
   referencePlane.material.visible = shouldShow;
   referencePlane.material.opacity = state.referenceImage.opacity;
@@ -2039,6 +2136,9 @@ function clearReferenceImage() {
   state.referenceImage.dataUrl = null;
   state.referenceImage.visible = true;
   state.referenceImage.opacity = 0.55;
+  state.referenceImage.aspectRatio = 1;
+  state.referenceImage.width = REFERENCE_PLANE_SIZE;
+  state.referenceImage.height = REFERENCE_PLANE_SIZE;
   applyReferenceImageState();
 }
 
@@ -2059,7 +2159,7 @@ async function readImageFileAsDataUrl(file) {
   });
 }
 
-function loadReferenceTextureFromDataUrl(dataUrl) {
+function loadReferenceTextureFromDataUrl(dataUrl, { preserveCurrentSize = false } = {}) {
   return new Promise((resolve, reject) => {
     if (!dataUrl) {
       clearReferenceImage();
@@ -2080,11 +2180,35 @@ function loadReferenceTextureFromDataUrl(dataUrl) {
           referenceTexture.dispose?.();
         }
 
+        const image = texture.image || {};
+        const widthPx = numberOrFallback(image.width, 1);
+        const heightPx = numberOrFallback(image.height, 1);
+        const aspectRatio = Math.max(0.05, widthPx / Math.max(1, heightPx));
+
         referenceTexture = texture;
         referencePlane.material.map = texture;
         referencePlane.material.needsUpdate = true;
 
         state.referenceImage.dataUrl = dataUrl;
+        state.referenceImage.aspectRatio = aspectRatio;
+
+        if (!preserveCurrentSize) {
+          const fitted = computeReferenceFitSize(aspectRatio);
+          state.referenceImage.width = fitted.width;
+          state.referenceImage.height = fitted.height;
+        } else {
+          state.referenceImage.width = clamp(
+            numberOrFallback(state.referenceImage.width, computeReferenceFitSize(aspectRatio).width),
+            5,
+            REFERENCE_PLANE_SIZE
+          );
+          state.referenceImage.height = clamp(
+            numberOrFallback(state.referenceImage.height, computeReferenceFitSize(aspectRatio).height),
+            5,
+            REFERENCE_PLANE_SIZE
+          );
+        }
+
         applyReferenceImageState();
         resolve();
       },
@@ -2248,6 +2372,33 @@ function installEvents() {
       referencePlane.material.opacity = state.referenceImage.opacity;
     }
     updateReferenceUi();
+  });
+
+  referenceWidthInput?.addEventListener('input', (event) => {
+    state.referenceImage.width = clamp(Number(event.target.value) || REFERENCE_PLANE_SIZE, 5, REFERENCE_PLANE_SIZE);
+    applyReferenceImageGeometry();
+    updateReferenceUi();
+  });
+
+  referenceHeightInput?.addEventListener('input', (event) => {
+    state.referenceImage.height = clamp(Number(event.target.value) || REFERENCE_PLANE_SIZE, 5, REFERENCE_PLANE_SIZE);
+    applyReferenceImageGeometry();
+    updateReferenceUi();
+  });
+
+  referenceFitContainButton?.addEventListener('click', () => {
+    fitReferenceImageToPlane();
+    setProjectMessage('Imagen guía encajada respetando su proporción.', 'success');
+  });
+
+  referenceFillPlaneButton?.addEventListener('click', () => {
+    fillReferenceImageToPlane();
+    setProjectMessage('Imagen guía estirada para llenar todo el plano.', 'success');
+  });
+
+  referenceResetSizeButton?.addEventListener('click', () => {
+    fitReferenceImageToPlane();
+    setProjectMessage('Imagen guía restaurada a su tamaño proporcional.', 'neutral');
   });
 
   loadReferenceImageButton?.addEventListener('click', () => {
