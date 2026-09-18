@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.2";
-import { setupMobilePanels } from "./ui.js?v=6.2";
-import { createPlacementController } from "./placement.js?v=6.2";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.2";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.3";
+import { setupMobilePanels } from "./ui.js?v=6.3";
+import { createPlacementController } from "./placement.js?v=6.3";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.3";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.2";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.2";
+} from "./snap.js?v=6.3";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.3";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.2";
+} from "./project-io.js?v=6.3";
 
 window.__RMB_READY__ = false;
 
@@ -1057,12 +1057,16 @@ function createGround() {
       transparent: true,
       opacity: state.referenceImage.opacity,
       depthWrite: false,
-      visible: false,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     })
   );
   referencePlane.rotation.x = -Math.PI / 2;
-  referencePlane.position.y = -0.012;
+  referencePlane.position.y = -0.008;
   referencePlane.renderOrder = 1;
+  referencePlane.raycast = () => {};
   scene.add(referencePlane);
 }
 
@@ -2011,9 +2015,12 @@ function updateReferenceUi() {
 function applyReferenceImageState() {
   if (!referencePlane) return;
 
-  referencePlane.visible = Boolean(
+  const shouldShow = Boolean(
     state.referenceImage.dataUrl && state.referenceImage.visible
   );
+
+  referencePlane.visible = shouldShow;
+  referencePlane.material.visible = shouldShow;
   referencePlane.material.opacity = state.referenceImage.opacity;
   referencePlane.material.needsUpdate = true;
   updateReferenceUi();
@@ -2259,7 +2266,7 @@ function installEvents() {
     try {
       const dataUrl = await readImageFileAsDataUrl(file);
       await loadReferenceTextureFromDataUrl(dataUrl);
-      setProjectMessage('Imagen guía cargada y ajustada al tamaño del plano.', 'success');
+      setProjectMessage('Imagen guía visible · ajustada al plano completo.', 'success');
     } catch (error) {
       console.error('[Resort Map Builder] Imagen guía:', error);
       setProjectMessage(error instanceof Error ? error.message : 'No se pudo cargar la imagen guía.', 'error');

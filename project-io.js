@@ -248,8 +248,8 @@ export async function readProjectJson(file) {
     throw new Error("Selecciona un archivo JSON.");
   }
 
-  if (file.size > 10 * 1024 * 1024) {
-    throw new Error("El archivo supera el límite de 10 MB.");
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error("El archivo supera el límite de 30 MB.");
   }
 
   const text = await file.text();

@@ -1,48 +1,46 @@
-# Resort Map Builder · Parte 6.2
+# Resort Map Builder · Parte 6.3
 
-Actualización de la 6.1 con mejoras de trabajo sobre referencia real.
+Corrección visual y funcional sobre Parte 6.2.
 
-## Novedades
+## Corregido: imagen guía invisible
 
-- Imagen guía bloqueada sobre el plano.
-- Opacidad ajustable para construir encima.
-- La imagen se ajusta al tamaño máximo del plano (140 × 140 m).
-- La imagen guía también se guarda dentro de `resort.json`.
-- Imán de cuadrícula configurable por selectores.
-- Imán entre objetos configurable por selectores.
-- Atracción al suelo configurable y activada por defecto.
-- Guías visuales de alineación (líneas punteadas) cuando el imán entre objetos se activa.
-- Mejor comportamiento del imán durante el escalado para que los objetos no se separen tan fácilmente al crecer.
+La imagen sí se cargaba, pero el material de Three.js quedaba internamente marcado como invisible.
+En 6.3:
 
-## Proyecto
+- la textura se renderiza realmente;
+- la capa queda encima del fondo y debajo de la construcción;
+- no puede seleccionarse accidentalmente;
+- sigue ocupando el plano completo de 140 × 140 m;
+- mantiene mostrar/ocultar y opacidad;
+- continúa guardándose en `resort.json`.
 
-En el panel **Proyecto** ahora puedes: 
+## Escritorio reorganizado
 
-- Elegir el alcance del imán de cuadrícula.
-- Elegir el alcance del imán entre objetos.
-- Elegir el alcance de la atracción al suelo.
-- Cargar una imagen guía.
-- Ocultarla / mostrarla.
-- Ajustar su opacidad.
-- Guardar y cargar `resort.json`.
+En PC ya no se apilan Propiedades, Proyecto y Controles PC.
 
-## Imagen guía
-
-La imagen guía no forma parte de los objetos editables.
-Se trata como una capa de referencia bloqueada, así que no se selecciona ni interfiere con la construcción.
-
-## Archivos principales
+La pantalla se divide conceptualmente en:
 
 ```text
-index.html
-style.css
-app.js
-props.js
-ui.js
-placement.js
-desktop-controls.js
-snap.js
-project-io.js
-scale-anchor.js
-README.md
+┌──────────────┬───────────────────────────────┬────────────────┐
+│ Biblioteca   │                               │ Propiedades    │
+│              │           PLANO 3D            │                │
+│              │                               ├────────────────┤
+├──────────────┤                               │ Proyecto       │
+│ Objetos      │                               │                │
+└──────────────┴───────────────────────────────┴────────────────┘
 ```
+
+El canvas ocupa el centro y los paneles tienen carriles reservados.
+
+`Controles PC` ahora abre dentro del área central, separado de Proyecto.
+
+## iOS
+
+No se modifica el sistema móvil de cajones inferiores. iPhone/iPad siguen usando:
+
+`Props · Objetos · Editar · Vista · Proyecto`
+
+## Compatibilidad
+
+`resort.json` mantiene el esquema v2 de Parte 6.2.
+También se amplió el límite de lectura a 30 MB porque el archivo puede contener la imagen guía embebida.
