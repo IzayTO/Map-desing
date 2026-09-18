@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f5f2" />
+  <meta
+    name="description"
+    content="Constructor 3D ligero para crear y visualizar mapas de resort."
+  />
+  <title>Resort Map Builder</title>
+
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">RESORT MAP BUILDER</p>
+        <h1>Constructor de plano 3D</h1>
+      </div>
+
+      <div class="status" aria-live="polite">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Comprobando proyecto…</span>
+      </div>
+    </header>
+
+    <section class="workspace" aria-label="Área de trabajo">
+      <div class="workspace-card">
+        <div class="badge">PARTE 1</div>
+        <h2>Base lista</h2>
+        <p>
+          La estructura del proyecto está funcionando correctamente.
+          En la Parte 2 este espacio se convertirá en el plano 3D interactivo.
+        </p>
+
+        <div class="checks">
+          <div class="check">
+            <strong>HTML</strong>
+            <span>✓ cargado</span>
+          </div>
+          <div class="check">
+            <strong>CSS</strong>
+            <span>✓ cargado</span>
+          </div>
+          <div class="check">
+            <strong>JavaScript</strong>
+            <span id="jsCheck">comprobando…</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Preparado para GitHub Pages</span>
+      <span id="buildInfo"></span>
+    </footer>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
