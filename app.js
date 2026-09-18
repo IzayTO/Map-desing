@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=5.0";
-import { setupMobilePanels } from "./ui.js?v=5.0";
-import { createPlacementController } from "./placement.js?v=5.0";
+import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=5.1";
+import { setupMobilePanels } from "./ui.js?v=5.1";
+import { createPlacementController } from "./placement.js?v=5.1";
+import { setupDesktopControls } from "./desktop-controls.js?v=5.1";
 
 window.__RMB_READY__ = false;
 
@@ -26,6 +27,10 @@ const placementToolbar = document.querySelector("#placementToolbar");
 const placementLabel = document.querySelector("#placementLabel");
 const placementCount = document.querySelector("#placementCount");
 const placementFinishButton = document.querySelector("#placementFinish");
+
+const desktopHelpToggle = document.querySelector("#desktopHelpToggle");
+const desktopHelpPanel = document.querySelector("#desktopHelpPanel");
+const desktopHelpClose = document.querySelector("#desktopHelpClose");
 
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
@@ -108,6 +113,7 @@ let grid;
 let selectionBox;
 let mobilePanels;
 let placementController;
+let desktopControls;
 let resizeObserver;
 let animationFrame = 0;
 let isPageVisible = true;
@@ -303,6 +309,15 @@ function createScene() {
         updatePropertiesFromSelection();
       }
     },
+  });
+
+  desktopControls = setupDesktopControls({
+    camera,
+    mapControls,
+    resetView,
+    isPlacementActive: () => placementController?.isActive() ?? false,
+    isTransformDragging: () => transformControls?.dragging ?? false,
+    isEditingField,
   });
 
   // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
@@ -1132,6 +1147,11 @@ function installEvents() {
   resizeObserver = new ResizeObserver(resizeViewport);
   resizeObserver.observe(viewport);
 
+  // En PC el botón derecho rota la cámara. Evitamos el menú contextual.
+  renderer.domElement.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   renderer.domElement.addEventListener("pointerdown", (event) => {
     state.pointerDown = { x: event.clientX, y: event.clientY };
   });
@@ -1211,6 +1231,16 @@ function installEvents() {
   perspectiveViewButton.addEventListener("click", setPerspectiveView);
   topViewButton.addEventListener("click", setTopView);
   resetViewButton.addEventListener("click", resetView);
+
+  desktopHelpToggle?.addEventListener("click", () => {
+    const hidden = desktopHelpPanel.classList.toggle("hidden");
+    desktopHelpToggle.setAttribute("aria-expanded", String(!hidden));
+  });
+
+  desktopHelpClose?.addEventListener("click", () => {
+    desktopHelpPanel.classList.add("hidden");
+    desktopHelpToggle.setAttribute("aria-expanded", "false");
+  });
 
   gridOpacityInput.addEventListener("input", (event) => {
     const percentage = Number(event.target.value);
@@ -1298,6 +1328,7 @@ function cleanup() {
   }
 
   resizeObserver?.disconnect();
+  desktopControls?.dispose?.();
   mapControls?.dispose();
   transformControls?.dispose();
 

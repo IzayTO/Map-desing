@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 5 · colocación múltiple dinámica sobre la cuadrícula."
+    content="Resort Map Builder · Parte 5.1 · controles optimizados para iOS y escritorio."
   />
-  <title>Resort Map Builder · Parte 5</title>
+  <title>Resort Map Builder · Parte 5.1</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=5.0" />
+  <link rel="stylesheet" href="./style.css?v=5.1" />
 
   <script type="importmap">
   {
@@ -378,6 +378,58 @@
         <span><b>Colocar:</b> toca el plano · ✓ termina</span>
       </div>
 
+      <button
+        class="desktop-help-toggle"
+        id="desktopHelpToggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="desktopHelpPanel"
+      >
+        Controles PC
+      </button>
+
+      <aside class="desktop-help-panel hidden" id="desktopHelpPanel" aria-label="Controles de computadora">
+        <div class="desktop-help-head">
+          <strong>Controles de cámara</strong>
+          <button id="desktopHelpClose" type="button" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="desktop-help-grid">
+          <div>
+            <span class="desktop-help-key">Mouse izq.</span>
+            <small>Mover plano</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">Mouse der.</span>
+            <small>Girar cámara</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">Rueda</span>
+            <small>Zoom</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">↑ ↓ ← →</span>
+            <small>Mover cámara</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">Shift + ← →</span>
+            <small>Girar alrededor</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">Shift + ↑ ↓</span>
+            <small>Inclinar vista</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">+ / −</span>
+            <small>Acercar / alejar</small>
+          </div>
+          <div>
+            <span class="desktop-help-key">0</span>
+            <small>Centrar vista</small>
+          </div>
+        </div>
+      </aside>
+
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
@@ -387,12 +439,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 5 · Colocación múltiple dinámica</span>
+      <span>Parte 5.1 · iOS + escritorio</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=5.0"></script>
+  <script type="module" src="./app.js?v=5.1"></script>
 </body>
 </html>

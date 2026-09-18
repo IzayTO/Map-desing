@@ -357,6 +357,94 @@ input:disabled{
   cursor:not-allowed
 }
 
+
+.desktop-help-toggle{
+  position:absolute;
+  z-index:5;
+  right:315px;
+  bottom:15px;
+  min-height:34px;
+  padding:0 11px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:rgba(255,255,255,.72);
+  color:#555;
+  font-size:.58rem;
+  font-weight:650;
+  cursor:pointer;
+  -webkit-backdrop-filter:blur(15px);
+  backdrop-filter:blur(15px)
+}
+
+.desktop-help-panel{
+  position:absolute;
+  z-index:13;
+  right:315px;
+  bottom:58px;
+  width:300px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:15px;
+  background:rgba(255,255,255,.95);
+  box-shadow:0 18px 48px rgba(0,0,0,.11);
+  -webkit-backdrop-filter:blur(20px) saturate(125%);
+  backdrop-filter:blur(20px) saturate(125%)
+}
+
+.desktop-help-head{
+  min-height:32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px
+}
+
+.desktop-help-head strong{
+  font-size:.66rem;
+  font-weight:700
+}
+
+.desktop-help-head button{
+  width:28px;
+  height:28px;
+  border:0;
+  border-radius:8px;
+  background:rgba(0,0,0,.05);
+  color:#555;
+  cursor:pointer
+}
+
+.desktop-help-grid{
+  margin-top:5px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px
+}
+
+.desktop-help-grid>div{
+  min-width:0;
+  min-height:47px;
+  padding:7px;
+  display:grid;
+  align-content:center;
+  gap:2px;
+  border-radius:9px;
+  background:rgba(0,0,0,.035)
+}
+
+.desktop-help-key{
+  color:#333;
+  font-size:.58rem;
+  font-weight:700
+}
+
+.desktop-help-grid small{
+  color:var(--muted);
+  font-size:.52rem;
+  line-height:1.25
+}
+
+
 .mobile-dock,.mobile-backdrop{display:none}
 
 .footer{min-width:0;padding:0 6px;display:flex;align-items:center;justify-content:space-between;gap:15px;color:var(--muted-2);font-size:.62rem;white-space:nowrap}
@@ -536,5 +624,38 @@ input:disabled{
 @media (hover:hover) and (pointer:fine){
   .placement-finish:hover{
     background:#000
+  }
+}
+
+
+@media (hover:hover) and (pointer:fine){
+  #viewport canvas{
+    cursor:grab
+  }
+
+  #viewport canvas:active{
+    cursor:grabbing
+  }
+
+  .desktop-help-toggle:hover{
+    background:rgba(255,255,255,.95)
+  }
+}
+
+@media (max-width:1080px) and (min-width:761px){
+  .desktop-help-toggle{
+    right:270px
+  }
+
+  .desktop-help-panel{
+    right:270px
+  }
+}
+
+/* iOS y táctil siguen siendo prioridad: ocultamos ayuda específica de PC. */
+@media (hover:none), (pointer:coarse), (max-width:760px){
+  .desktop-help-toggle,
+  .desktop-help-panel{
+    display:none!important
   }
 }
