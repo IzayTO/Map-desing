@@ -1,57 +1,107 @@
-# Resort Map Builder · Parte 5.1
+# Resort Map Builder · Parte 6.1
 
-Pulido multiplataforma antes de la Parte 6.
+Esta versión parte de la Parte 6 y mantiene:
 
-La prioridad continúa siendo iOS/táctil, pero la versión de escritorio ahora tiene controles de cámara dedicados.
-
-## iPhone / iPad
-
-Se conserva:
-
-- Gestos táctiles.
-- Props / Objetos / Editar / Vista.
+- Guardar / cargar `resort.json`.
+- Imán de cuadrícula.
 - Colocación múltiple.
-- Palomita `✓`.
+- iOS + PC.
 - Bloqueo.
 - Opacidad.
+- Vistas.
 - Sliders.
-- Vista 3D / Desde arriba.
+- Puente normal y puente arqueado.
 
-## PC / Mac
+## Escalado desde un solo lado
 
-### Mouse
+### PC / Mac
 
-- Clic izquierdo + arrastrar: mover el plano.
-- Clic derecho + arrastrar: rotar/orbitar la cámara.
-- Rueda: zoom.
-- Clic corto: seleccionar o colocar objeto.
-- Se bloquea el menú contextual dentro del plano para que el clic derecho sea cómodo.
+En modo **Escalar**, arrastra una flecha X/Y/Z:
 
-### Teclado de cámara
+- Normal: el objeto crece desde el centro.
+- Manteniendo `Shift`: el lado contrario queda fijo y solo avanza el lado que estás arrastrando.
+- Al soltar `Shift`: vuelve inmediatamente al comportamiento desde el centro.
 
-- `↑ ↓ ← →`: desplazarse por el plano.
-- `Shift + ← / →`: girar alrededor del punto observado.
-- `Shift + ↑ / ↓`: inclinar la cámara arriba/abajo.
-- `+ / -`: acercar/alejar.
-- `0`: centrar la vista.
+### iPhone / iPad
 
-### Teclado de objetos
+Al seleccionar un objeto editable aparece arriba:
 
-Se conserva:
+**⇥ Un lado**
 
-- `W`: mover objeto.
-- `E`: rotar objeto.
-- `R`: escalar objeto.
-- `Esc`: terminar colocación o deseleccionar.
-- `Delete / Backspace`: eliminar.
-- `Ctrl/Cmd + D`: duplicar.
+- Apagado: escala desde el centro.
+- Encendido: fija el lado contrario durante el escalado.
 
-Los controles de cámara por teclado no actúan mientras escribes en un campo o mientras arrastras un manipulador.
+Los props de escala estrictamente uniforme (palmera, árbol, etc.) no muestran esta opción.
 
-## Archivo nuevo
+## Dos imanes independientes
+
+En `Proyecto`:
+
+### Imán de cuadrícula
+
+Atrae X/Z hacia las líneas de la retícula cada 2 m.
+
+### Imán entre objetos
+
+Cuando dos piezas quedan a unos 30 cm:
+
+- borde con borde,
+- borde alineado,
+- o centro con centro,
+
+se produce una atracción suave. Un desplazamiento mayor vuelve a liberarlo.
+
+Puedes activar ambos, solo uno o ninguno.
+
+## Biblioteca nueva
+
+### Geometría
+
+- Bloque.
+- Esfera.
+- Cilindro.
+- Cono.
+- Pirámide cuadrada.
+- Pirámide cortada.
+- Triángulo 3D / cuña.
+
+### Arquitectura
+
+- Ventana.
+- Puerta café.
+- Lámpara de muro.
+- Columna redonda.
+- Pilar cuadrado.
+- Barandal.
+- Muro bajo.
+
+### Escaleras
+
+- Recta.
+- En L con descanso.
+- En U con retorno.
+
+Cuando seleccionas una escalera aparece un slider de:
+
+**Número de escalones: 3–30**
+
+La escalera se reconstruye automáticamente sin modelos externos.
+
+## Archivos nuevos / ampliados
 
 ```text
-desktop-controls.js
+/
+├── index.html
+├── style.css
+├── app.js
+├── props.js
+├── ui.js
+├── placement.js
+├── desktop-controls.js
+├── snap.js
+├── project-io.js
+├── scale-anchor.js     ← NUEVO
+└── README.md
 ```
 
-Separa toda la navegación de teclado de `app.js`.
+Los parámetros de escalera y los nuevos estados de imán/escalado también se guardan dentro de `resort.json`.

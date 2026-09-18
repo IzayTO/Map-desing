@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 5.1 · controles optimizados para iOS y escritorio."
+    content="Resort Map Builder · Parte 6.1 · constructor ampliado con escalado anclado, imanes y arquitectura."
   />
-  <title>Resort Map Builder · Parte 5.1</title>
+  <title>Resort Map Builder · Parte 6.1</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=5.1" />
+  <link rel="stylesheet" href="./style.css?v=6.1" />
 
   <script type="importmap">
   {
@@ -97,6 +97,16 @@
           <span id="quickLockIcon" aria-hidden="true">🔓</span>
           <span id="quickLockText">Bloquear</span>
         </button>
+        <button
+          class="quick-action"
+          id="quickAnchorScale"
+          type="button"
+          aria-pressed="false"
+          title="Escalar desde un solo lado"
+        >
+          <span aria-hidden="true">⇥</span>
+          <span id="quickAnchorScaleText">Un lado</span>
+        </button>
 
         <button
           class="quick-action quick-action-duplicate"
@@ -139,6 +149,75 @@
           </section>
 
           <section class="library-section">
+            <span class="library-section-title">Geometría</span>
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="boxShape">
+                <span class="library-glyph" aria-hidden="true">□</span><span><strong>Bloque</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="sphereShape">
+                <span class="library-glyph" aria-hidden="true">●</span><span><strong>Esfera</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="cylinderShape">
+                <span class="library-glyph" aria-hidden="true">○</span><span><strong>Cilindro</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="coneShape">
+                <span class="library-glyph" aria-hidden="true">△</span><span><strong>Cono</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="pyramidShape">
+                <span class="library-glyph" aria-hidden="true">◇</span><span><strong>Pirámide</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="frustumShape">
+                <span class="library-glyph" aria-hidden="true">⬡</span><span><strong>Pirámide cortada</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="wedgeShape">
+                <span class="library-glyph" aria-hidden="true">◢</span><span><strong>Triángulo 3D</strong></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="library-section">
+            <span class="library-section-title">Arquitectura</span>
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="window">
+                <span class="library-glyph" aria-hidden="true">▣</span><span><strong>Ventana</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="door">
+                <span class="library-glyph" aria-hidden="true">▯</span><span><strong>Puerta</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="wallLamp">
+                <span class="library-glyph" aria-hidden="true">◐</span><span><strong>Lámpara muro</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="column">
+                <span class="library-glyph" aria-hidden="true">◯</span><span><strong>Columna</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="pillar">
+                <span class="library-glyph" aria-hidden="true">▮</span><span><strong>Pilar</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="railing">
+                <span class="library-glyph" aria-hidden="true">╫</span><span><strong>Barandal</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="lowWall">
+                <span class="library-glyph" aria-hidden="true">▬</span><span><strong>Muro bajo</strong></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="library-section">
+            <span class="library-section-title">Escaleras</span>
+            <div class="library-grid">
+              <button class="library-item compact" type="button" data-create="stairsStraight">
+                <span class="library-glyph" aria-hidden="true">▰</span><span><strong>Recta</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="stairsL">
+                <span class="library-glyph" aria-hidden="true">⌞</span><span><strong>En L</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="stairsU">
+                <span class="library-glyph" aria-hidden="true">∪</span><span><strong>En U</strong></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="library-section">
             <span class="library-section-title">Vegetación</span>
             <div class="library-grid">
               <button class="library-item compact" type="button" data-create="palm">
@@ -164,6 +243,9 @@
               </button>
               <button class="library-item compact" type="button" data-create="bridge">
                 <span class="library-glyph" aria-hidden="true">⌒</span><span><strong>Puente</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="archedBridge">
+                <span class="library-glyph" aria-hidden="true">∩</span><span><strong>Puente arco</strong></span>
               </button>
             </div>
           </section>
@@ -243,6 +325,18 @@
                 <input id="uniformSize" type="range" min="25" max="300" step="5" value="100" />
                 <span id="uniformSizeValue">100%</span>
               </div>
+            </label>
+          </div>
+
+          <div id="parametricFields" class="hidden">
+            <div class="section-label">Escalera</div>
+
+            <label class="slider-field">
+              <span class="slider-field-head">
+                <span>Número de escalones</span>
+                <strong id="stairStepsValue">10</strong>
+              </span>
+              <input id="stairSteps" type="range" min="3" max="30" step="1" value="10" />
             </label>
           </div>
 
@@ -350,6 +444,77 @@
         </div>
       </section>
 
+      <!-- PROYECTO -->
+      <section class="panel project-panel" id="projectPanel" aria-label="Guardar y cargar proyecto">
+        <div class="panel-heading">
+          <div>
+            <span class="panel-kicker">PROYECTO</span>
+            <strong>Guardar y cargar</strong>
+          </div>
+          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar proyecto">×</button>
+        </div>
+
+        <div class="project-content">
+          <div class="project-setting">
+            <div>
+              <strong>Imán de cuadrícula</strong>
+              <small>Se pega suavemente a líneas cada 2 m cuando estás cerca.</small>
+            </div>
+
+            <button
+              class="project-switch"
+              id="snapToggle"
+              type="button"
+              role="switch"
+              aria-checked="false"
+            >
+              Libre
+            </button>
+          </div>
+          <div class="project-setting">
+            <div>
+              <strong>Imán entre objetos</strong>
+              <small>Alinea bordes y centros cuando dos piezas quedan muy cerca.</small>
+            </div>
+
+            <button
+              class="project-switch"
+              id="objectSnapToggle"
+              type="button"
+              role="switch"
+              aria-checked="false"
+            >
+              Apagado
+            </button>
+          </div>
+
+          <div class="project-divider"></div>
+
+          <div class="project-actions">
+            <button class="project-button primary" id="saveProject" type="button">
+              <span aria-hidden="true">↓</span>
+              Guardar resort.json
+            </button>
+
+            <button class="project-button" id="loadProject" type="button">
+              <span aria-hidden="true">↑</span>
+              Cargar resort.json
+            </button>
+          </div>
+
+          <input
+            id="projectFileInput"
+            class="hidden"
+            type="file"
+            accept=".json,application/json"
+          />
+
+          <p class="project-message" id="projectMessage" aria-live="polite">
+            Se guardan objetos, escaleras, bloqueos, opacidad, cámara e imanes.
+          </p>
+        </div>
+      </section>
+
       <!-- MOBILE DRAWER BACKDROP -->
       <button class="mobile-backdrop" id="mobileBackdrop" type="button" aria-label="Cerrar panel"></button>
 
@@ -367,6 +532,9 @@
         <button type="button" data-open-panel="viewPanel">
           <span>◇</span><small>Vista</small>
         </button>
+        <button type="button" data-open-panel="projectPanel">
+          <span>↓</span><small>Proyecto</small>
+        </button>
       </nav>
 
       <div class="help-pill">
@@ -376,6 +544,8 @@
         <span><b>R:</b> escalar</span>
         <span><b>Ctrl/Cmd + D:</b> duplicar</span>
         <span><b>Colocar:</b> toca el plano · ✓ termina</span>
+        <span><b>Imán:</b> Proyecto → Imán</span>
+        <span><b>Shift + escalar:</b> fija el lado opuesto</span>
       </div>
 
       <button
@@ -439,12 +609,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 5.1 · iOS + escritorio</span>
+      <span>Parte 6.1 · Constructor ampliado</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=5.1"></script>
+  <script type="module" src="./app.js?v=6.1"></script>
 </body>
 </html>

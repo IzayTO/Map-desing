@@ -1,10 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=5.1";
-import { setupMobilePanels } from "./ui.js?v=5.1";
-import { createPlacementController } from "./placement.js?v=5.1";
-import { setupDesktopControls } from "./desktop-controls.js?v=5.1";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.1";
+import { setupMobilePanels } from "./ui.js?v=6.1";
+import { createPlacementController } from "./placement.js?v=6.1";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.1";
+import {
+  GRID_STEP,
+  MAGNET_THRESHOLD,
+  OBJECT_MAGNET_THRESHOLD,
+  magnetizeXZ,
+  snapObjectToObjects,
+} from "./snap.js?v=6.1";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.1";
+import {
+  createProjectDocument,
+  validateProjectDocument,
+  downloadProjectJson,
+  readProjectJson,
+} from "./project-io.js?v=6.1";
 
 window.__RMB_READY__ = false;
 
@@ -20,6 +34,8 @@ const quickSelectionName = document.querySelector("#quickSelectionName");
 const quickLockButton = document.querySelector("#quickLock");
 const quickLockIcon = document.querySelector("#quickLockIcon");
 const quickLockText = document.querySelector("#quickLockText");
+const quickAnchorScaleButton = document.querySelector("#quickAnchorScale");
+const quickAnchorScaleText = document.querySelector("#quickAnchorScaleText");
 const quickDuplicateButton = document.querySelector("#quickDuplicate");
 const quickDeleteButton = document.querySelector("#quickDelete");
 
@@ -31,6 +47,13 @@ const placementFinishButton = document.querySelector("#placementFinish");
 const desktopHelpToggle = document.querySelector("#desktopHelpToggle");
 const desktopHelpPanel = document.querySelector("#desktopHelpPanel");
 const desktopHelpClose = document.querySelector("#desktopHelpClose");
+
+const snapToggle = document.querySelector("#snapToggle");
+const objectSnapToggle = document.querySelector("#objectSnapToggle");
+const saveProjectButton = document.querySelector("#saveProject");
+const loadProjectButton = document.querySelector("#loadProject");
+const projectFileInput = document.querySelector("#projectFileInput");
+const projectMessage = document.querySelector("#projectMessage");
 
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
@@ -52,6 +75,10 @@ const heightInput = document.querySelector("#objectHeight");
 const depthInput = document.querySelector("#objectDepth");
 const uniformSizeInput = document.querySelector("#uniformSize");
 const uniformSizeValue = document.querySelector("#uniformSizeValue");
+
+const parametricFields = document.querySelector("#parametricFields");
+const stairStepsInput = document.querySelector("#stairSteps");
+const stairStepsValue = document.querySelector("#stairStepsValue");
 
 const positionXInput = document.querySelector("#positionX");
 const positionYInput = document.querySelector("#positionY");
@@ -100,6 +127,9 @@ const state = {
   pointerDown: null,
   lastUniformScale: 1,
   viewMode: "perspective",
+  snapEnabled: false,
+  objectSnapEnabled: false,
+  oneSidedScaleEnabled: false,
 };
 
 let scene;
@@ -114,6 +144,7 @@ let selectionBox;
 let mobilePanels;
 let placementController;
 let desktopControls;
+let oneSidedScaleController;
 let resizeObserver;
 let animationFrame = 0;
 let isPageVisible = true;
@@ -159,6 +190,41 @@ function isUniformObject(object) {
 
 function isBuilding(object) {
   return object?.userData?.editorType === "building";
+}
+
+function canMoveY(object) {
+  return Boolean(
+    isBuilding(object) ||
+    object?.userData?.allowY
+  );
+}
+
+function isParametricStairs(object) {
+  return Boolean(
+    object?.userData?.parametric === "stairs"
+  );
+}
+
+function canUseOneSidedScale(object) {
+  return Boolean(
+    object &&
+    !isLocked(object) &&
+    !isUniformObject(object)
+  );
+}
+
+function getBaseDimensionForAxis(object, axisKey) {
+  if (isBuilding(object)) {
+    return 1;
+  }
+
+  const base =
+    object?.userData?.baseDimensions;
+
+  return Math.max(
+    0.0001,
+    Number(base?.[axisKey]) || 1
+  );
 }
 
 function isSurfaceLike(object) {
@@ -249,6 +315,460 @@ function toggleSelectedLock() {
   setObjectLocked(state.selected, !isLocked(state.selected));
 }
 
+function setProjectMessage(message, tone = "neutral") {
+  if (!projectMessage) return;
+
+  projectMessage.textContent = message;
+  projectMessage.dataset.tone = tone;
+}
+
+function updateSnapUi() {
+  snapToggle?.setAttribute(
+    "aria-checked",
+    String(state.snapEnabled)
+  );
+
+  if (snapToggle) {
+    snapToggle.textContent =
+      state.snapEnabled
+        ? `Imán · ${GRID_STEP} m`
+        : "Libre";
+  }
+
+  objectSnapToggle?.setAttribute(
+    "aria-checked",
+    String(state.objectSnapEnabled)
+  );
+
+  if (objectSnapToggle) {
+    objectSnapToggle.textContent =
+      state.objectSnapEnabled
+        ? "Objetos"
+        : "Apagado";
+  }
+}
+
+function setSnapEnabled(enabled) {
+  state.snapEnabled = Boolean(enabled);
+  updateSnapUi();
+
+  setProjectMessage(
+    state.snapEnabled
+      ? `Imán activado: se ajusta a líneas cada ${GRID_STEP} m al acercarte.`
+      : "Movimiento libre activado.",
+    "neutral"
+  );
+}
+
+function setObjectSnapEnabled(enabled) {
+  state.objectSnapEnabled = Boolean(enabled);
+  updateSnapUi();
+
+  setProjectMessage(
+    state.objectSnapEnabled
+      ? "Imán entre objetos activado."
+      : "Imán entre objetos apagado.",
+    "neutral"
+  );
+}
+
+function updateOneSidedScaleUi() {
+  const object = state.selected;
+  const available =
+    canUseOneSidedScale(object);
+
+  quickAnchorScaleButton?.classList.toggle(
+    "hidden",
+    !available
+  );
+
+  quickAnchorScaleButton?.setAttribute(
+    "aria-pressed",
+    String(
+      available &&
+      state.oneSidedScaleEnabled
+    )
+  );
+
+  if (quickAnchorScaleText) {
+    quickAnchorScaleText.textContent =
+      state.oneSidedScaleEnabled
+        ? "Un lado ✓"
+        : "Un lado";
+  }
+}
+
+function setOneSidedScaleEnabled(enabled) {
+  state.oneSidedScaleEnabled =
+    Boolean(enabled);
+
+  updateOneSidedScaleUi();
+  oneSidedScaleController?.refreshMode();
+}
+
+function toggleOneSidedScale() {
+  setOneSidedScaleEnabled(
+    !state.oneSidedScaleEnabled
+  );
+}
+
+function magnetizePointXZ(x, z) {
+  return magnetizeXZ(
+    x,
+    z,
+    {
+      enabled: state.snapEnabled,
+      step: GRID_STEP,
+      threshold: MAGNET_THRESHOLD,
+    }
+  );
+}
+
+function applyMagnetToObject(
+  object,
+  {
+    includeObjectSnap = false,
+  } = {}
+) {
+  if (!object) {
+    return;
+  }
+
+  if (state.snapEnabled) {
+    const snapped = magnetizePointXZ(
+      object.position.x,
+      object.position.z
+    );
+
+    object.position.x = snapped.x;
+    object.position.z = snapped.z;
+  }
+
+  if (
+    state.objectSnapEnabled &&
+    (
+      includeObjectSnap ||
+      state.transformMode === "translate"
+    )
+  ) {
+    snapObjectToObjects(
+      object,
+      state.objects,
+      {
+        enabled: true,
+        threshold:
+          OBJECT_MAGNET_THRESHOLD,
+      }
+    );
+  }
+}
+
+function serializeEditorObject(object) {
+  return {
+    editorType: isBuilding(object)
+      ? "building"
+      : "prop",
+    propType: isBuilding(object)
+      ? null
+      : object.userData.propType,
+    name: object.name,
+    position: object.position.toArray(),
+    scale: object.scale.toArray(),
+    rotationY: object.rotation.y,
+    locked: isLocked(object),
+    opacity: getObjectOpacity(object),
+    params:
+      object.userData.params
+        ? { ...object.userData.params }
+        : null,
+  };
+}
+
+function serializeProject() {
+  return createProjectDocument({
+    objects: state.objects.map(
+      serializeEditorObject
+    ),
+    settings: {
+      snapEnabled: state.snapEnabled,
+      objectSnapEnabled: state.objectSnapEnabled,
+      oneSidedScaleEnabled: state.oneSidedScaleEnabled,
+      gridVisible: state.gridVisible,
+      gridOpacity: state.gridOpacity,
+      groundOpacity: state.groundOpacity,
+      viewMode: state.viewMode,
+    },
+    camera: {
+      position: camera.position.toArray(),
+      target: mapControls.target.toArray(),
+    },
+  });
+}
+
+function disposeEditorObject(object) {
+  scene.remove(object);
+
+  object.traverse((child) => {
+    if (isBuilding(object)) {
+      child.geometry?.dispose?.();
+    }
+
+    if (
+      child.material &&
+      (
+        isBuilding(object) ||
+        child.userData.editorMaterialLocal
+      )
+    ) {
+      const materials = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+
+      for (const material of materials) {
+        material.dispose?.();
+      }
+    }
+  });
+}
+
+function clearEditorObjects() {
+  transformControls.detach();
+  removeSelectionBox();
+
+  for (const object of state.objects) {
+    disposeEditorObject(object);
+  }
+
+  state.objects = [];
+  state.selected = null;
+  state.nextBuildingNumber = 1;
+  state.nextPropNumbers = {};
+
+  refreshSceneList();
+  updatePropertiesFromSelection();
+}
+
+function restoreProjectObject(record) {
+  let object;
+
+  if (record.editorType === "building") {
+    object = createBuilding({
+      name: record.name,
+      width: 1,
+      height: 1,
+      depth: 1,
+      x: record.position[0],
+      y: record.position[1],
+      z: record.position[2],
+      rotationY: record.rotationY,
+      select: false,
+    });
+  } else {
+    object = createEditorProp(
+      record.propType,
+      {
+        name: record.name,
+        x: record.position[0],
+        z: record.position[2],
+        rotationY: record.rotationY,
+        scale: 1,
+        select: false,
+      }
+    );
+
+    object.position.y =
+      record.position[1];
+  }
+
+  if (
+    record.params &&
+    isParametricStairs(object)
+  ) {
+    updateParametricProp(
+      object,
+      record.params
+    );
+  }
+
+  object.scale.set(
+    record.scale[0],
+    record.scale[1],
+    record.scale[2]
+  );
+
+  object.userData.locked =
+    record.locked;
+
+  setObjectOpacity(
+    object,
+    record.opacity
+  );
+
+  return object;
+}
+
+function restoreProjectSettings(project) {
+  state.gridOpacity =
+    project.settings.gridOpacity;
+
+  state.groundOpacity =
+    project.settings.groundOpacity;
+
+  setGridOpacity(
+    state.gridOpacity
+  );
+
+  setGroundOpacity(
+    state.groundOpacity
+  );
+
+  setGridVisible(
+    project.settings.gridVisible
+  );
+
+  gridOpacityInput.value =
+    String(
+      Math.round(
+        state.gridOpacity * 100
+      )
+    );
+
+  gridOpacityValue.textContent =
+    `${Math.round(state.gridOpacity * 100)}%`;
+
+  groundOpacityInput.value =
+    String(
+      Math.round(
+        state.groundOpacity * 100
+      )
+    );
+
+  groundOpacityValue.textContent =
+    `${Math.round(state.groundOpacity * 100)}%`;
+
+  setSnapEnabled(
+    project.settings.snapEnabled
+  );
+
+  setObjectSnapEnabled(
+    project.settings.objectSnapEnabled
+  );
+
+  setOneSidedScaleEnabled(
+    project.settings.oneSidedScaleEnabled
+  );
+
+  camera.position.fromArray(
+    project.camera.position
+  );
+
+  mapControls.target.fromArray(
+    project.camera.target
+  );
+
+  mapControls.update();
+
+  setActiveViewButton(
+    project.settings.viewMode
+  );
+}
+
+function restoreProject(project) {
+  if (placementController?.isActive()) {
+    placementController.cancel();
+    renderer.domElement.classList.remove(
+      "placement-active"
+    );
+  }
+
+  clearEditorObjects();
+
+  for (const record of project.objects) {
+    restoreProjectObject(record);
+  }
+
+  restoreProjectSettings(project);
+
+  if (state.objects.length > 0) {
+    selectObject(
+      state.objects[
+        state.objects.length - 1
+      ]
+    );
+  } else {
+    deselectObject();
+  }
+
+  refreshSceneList();
+}
+
+function saveProjectFile() {
+  try {
+    const project = serializeProject();
+
+    downloadProjectJson(
+      project,
+      "resort.json"
+    );
+
+    setProjectMessage(
+      `resort.json guardado · ${state.objects.length} objetos.`,
+      "success"
+    );
+  } catch (error) {
+    console.error(
+      "[Resort Map Builder] Guardar:",
+      error
+    );
+
+    setProjectMessage(
+      error instanceof Error
+        ? error.message
+        : "No se pudo guardar el proyecto.",
+      "error"
+    );
+  }
+}
+
+async function loadProjectFile(file) {
+  try {
+    const raw =
+      await readProjectJson(file);
+
+    const project =
+      validateProjectDocument(
+        raw,
+        {
+          knownPropTypes:
+            Object.keys(PROP_CATALOG),
+        }
+      );
+
+    restoreProject(project);
+
+    setProjectMessage(
+      `Proyecto cargado · ${project.objects.length} objetos.`,
+      "success"
+    );
+  } catch (error) {
+    console.error(
+      "[Resort Map Builder] Cargar:",
+      error
+    );
+
+    setProjectMessage(
+      error instanceof Error
+        ? error.message
+        : "No se pudo cargar el proyecto.",
+      "error"
+    );
+  } finally {
+    if (projectFileInput) {
+      projectFileInput.value = "";
+    }
+  }
+}
+
 function showFatalError(message) {
   if (fatalMessage) fatalMessage.textContent = message;
   fatalError?.classList.add("visible");
@@ -291,6 +811,20 @@ function createScene() {
   createMapControls();
   createTransformControls();
 
+  oneSidedScaleController =
+    setupOneSidedScale({
+      camera,
+      element: renderer.domElement,
+      getObject: () => state.selected,
+      getMode: () => state.transformMode,
+      isToggleEnabled: () =>
+        state.oneSidedScaleEnabled,
+      canAnchor:
+        canUseOneSidedScale,
+      getBaseDimension:
+        getBaseDimensionForAxis,
+    });
+
   resizeViewport();
   installEvents();
   mobilePanels = setupMobilePanels();
@@ -319,6 +853,8 @@ function createScene() {
     isTransformDragging: () => transformControls?.dragging ?? false,
     isEditingField,
   });
+
+  updateSnapUi();
 
   // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
   createBuilding({
@@ -418,6 +954,11 @@ function createTransformControls() {
 
   transformControls.addEventListener("mouseDown", () => {
     mapControls.enabled = false;
+
+    oneSidedScaleController?.beginDrag(
+      transformControls.axis
+    );
+
     if (state.selected && isUniformObject(state.selected)) {
       state.lastUniformScale = state.selected.scale.x;
     }
@@ -425,9 +966,11 @@ function createTransformControls() {
 
   transformControls.addEventListener("mouseUp", () => {
     mapControls.enabled = true;
+    oneSidedScaleController?.endDrag();
   });
 
   transformControls.addEventListener("objectChange", () => {
+    oneSidedScaleController?.apply();
     applySelectionConstraints();
     updateSelectionBox();
     updatePropertiesFromSelection();
@@ -506,7 +1049,11 @@ function createEditorProp(type, {
   object.userData.locked = false;
   object.userData.opacity = 1;
   object.name = name || nextPropName(type);
-  object.position.set(x, 0, z);
+  object.position.set(
+    x,
+    Number(object.userData.defaultY) || 0,
+    z
+  );
   object.rotation.y = rotationY;
 
   if (isUniformObject(object)) {
@@ -626,7 +1173,26 @@ function duplicateSelectedObject() {
   });
 
   clone.position.y = source.position.y;
-  if (!isUniformObject(source)) clone.scale.copy(source.scale);
+
+  if (
+    source.userData.params &&
+    isParametricStairs(clone)
+  ) {
+    updateParametricProp(
+      clone,
+      source.userData.params
+    );
+  }
+
+  if (!isUniformObject(source)) {
+    clone.scale.copy(source.scale);
+  }
+
+  setObjectOpacity(
+    clone,
+    getObjectOpacity(source)
+  );
+
   selectObject(clone);
   return clone;
 }
@@ -636,23 +1202,7 @@ function deleteSelectedObject() {
   if (!object) return;
 
   transformControls.detach();
-  scene.remove(object);
-
-  object.traverse((child) => {
-    if (isBuilding(object)) {
-      child.geometry?.dispose?.();
-    }
-
-    if (child.material && (isBuilding(object) || child.userData.editorMaterialLocal)) {
-      const materials = Array.isArray(child.material)
-        ? child.material
-        : [child.material];
-
-      for (const material of materials) {
-        material.dispose?.();
-      }
-    }
-  });
+  disposeEditorObject(object);
 
   state.objects = state.objects.filter((item) => item !== object);
   state.selected = null;
@@ -729,7 +1279,10 @@ function configureTransformForSelection() {
   }
 
   if (mode === "translate") {
-    if (!isBuilding(object)) transformControls.showY = false;
+    if (!canMoveY(object)) {
+      transformControls.showY = false;
+    }
+
     transformControls.setSpace("world");
     return;
   }
@@ -749,8 +1302,14 @@ function applySelectionConstraints() {
   object.position.x = clamp(object.position.x, -70, 70);
   object.position.z = clamp(object.position.z, -70, 70);
 
-  if (isBuilding(object)) {
-    object.position.y = clamp(object.position.y, -5, 40);
+  applyMagnetToObject(object);
+
+  if (canMoveY(object)) {
+    object.position.y = clamp(
+      object.position.y,
+      -5,
+      40
+    );
   } else {
     object.position.y = 0;
   }
@@ -856,6 +1415,8 @@ function updatePropertiesFromSelection() {
     propertiesKind.textContent = "SELECCIÓN";
     propertiesTitle.textContent = "Sin selección";
     selectionStatus.textContent = "Ningún objeto seleccionado";
+    updateOneSidedScaleUi();
+    parametricFields.classList.add("hidden");
     return;
   }
 
@@ -873,8 +1434,22 @@ function updatePropertiesFromSelection() {
   objectNameInput.value = object.name;
 
   const uniform = isUniformObject(object);
+  const stairs = isParametricStairs(object);
+
   dimensionFields.classList.toggle("hidden", uniform);
   uniformSizeFields.classList.toggle("hidden", !uniform);
+  parametricFields.classList.toggle("hidden", !stairs);
+
+  if (stairs) {
+    const steps =
+      Number(object.userData.params?.steps) || 10;
+
+    stairStepsInput.value =
+      String(steps);
+
+    stairStepsValue.textContent =
+      String(steps);
+  }
 
   if (uniform) {
     const percentage = Math.round(object.scale.x * 100);
@@ -895,9 +1470,15 @@ function updatePropertiesFromSelection() {
   positionYValue.textContent = formatMeters(object.position.y);
   positionZValue.textContent = formatMeters(object.position.z);
 
-  const building = isBuilding(object);
-  positionYField.classList.toggle("hidden", !building);
-  positionYInput.disabled = !building || locked;
+  const movableY = canMoveY(object);
+  positionYField.classList.toggle(
+    "hidden",
+    !movableY
+  );
+  positionYInput.disabled =
+    !movableY || locked;
+
+  updateOneSidedScaleUi();
 
   const opacityPercent = Math.round(getObjectOpacity(object) * 100);
   objectOpacityInput.value = String(opacityPercent);
@@ -910,6 +1491,7 @@ function updatePropertiesFromSelection() {
     heightInput,
     depthInput,
     uniformSizeInput,
+    stairStepsInput,
     positionXInput,
     positionYInput,
     positionZInput,
@@ -917,7 +1499,14 @@ function updatePropertiesFromSelection() {
   ];
 
   for (const control of geometryControls) {
-    if (control) control.disabled = locked || (control === positionYInput && !building);
+    if (control) {
+      control.disabled =
+        locked ||
+        (
+          control === positionYInput &&
+          !movableY
+        );
+    }
   }
 
   lockedNote.classList.toggle("hidden", !locked);
@@ -973,13 +1562,26 @@ function applyPositionFromSliders() {
     70
   );
 
-  object.position.y = isBuilding(object)
+  object.position.y = canMoveY(object)
     ? clamp(
         numberOrFallback(positionYInput.value, object.position.y),
         -5,
         40
       )
     : 0;
+
+  applyMagnetToObject(
+    object,
+    {
+      includeObjectSnap: true,
+    }
+  );
+
+  positionXInput.value =
+    String(object.position.x);
+
+  positionZInput.value =
+    String(object.position.z);
 
   positionXValue.textContent = formatMeters(object.position.x);
   positionYValue.textContent = formatMeters(object.position.y);
@@ -1010,6 +1612,45 @@ function applyUniformSize(percentage) {
   object.scale.setScalar(scale);
   state.lastUniformScale = scale;
   uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
+  updateSelectionBox();
+}
+
+function applyStairSteps(value) {
+  const object = state.selected;
+
+  if (
+    !object ||
+    isLocked(object) ||
+    !isParametricStairs(object)
+  ) {
+    return;
+  }
+
+  const steps = clamp(
+    Math.round(Number(value) || 10),
+    3,
+    30
+  );
+
+  const opacity =
+    getObjectOpacity(object);
+
+  updateParametricProp(
+    object,
+    { steps }
+  );
+
+  setObjectOpacity(
+    object,
+    opacity
+  );
+
+  stairStepsInput.value =
+    String(steps);
+
+  stairStepsValue.textContent =
+    String(steps);
+
   updateSelectionBox();
 }
 
@@ -1049,6 +1690,15 @@ function groundPointFromEvent(event) {
   const point = hits[0].point.clone();
   point.x = clamp(point.x, -70, 70);
   point.z = clamp(point.z, -70, 70);
+
+  const snapped =
+    magnetizePointXZ(
+      point.x,
+      point.z
+    );
+
+  point.x = snapped.x;
+  point.z = snapped.z;
   point.y = 0;
 
   return point;
@@ -1066,7 +1716,18 @@ function placeCurrentType(event) {
   }
 
   const type = placementController.getType();
-  const object = createObjectAt(type, point, { select: false });
+  const object = createObjectAt(
+    type,
+    point,
+    { select: false }
+  );
+
+  applyMagnetToObject(
+    object,
+    {
+      includeObjectSnap: true,
+    }
+  );
 
   placementController.record(object);
 
@@ -1213,10 +1874,23 @@ function installEvents() {
     applyUniformSize(Number(event.target.value));
   });
 
+  stairStepsInput.addEventListener(
+    "input",
+    (event) => {
+      applyStairSteps(
+        Number(event.target.value)
+      );
+    }
+  );
+
   duplicateButton.addEventListener("click", duplicateSelectedObject);
   deleteButton.addEventListener("click", deleteSelectedObject);
 
   quickLockButton.addEventListener("click", toggleSelectedLock);
+  quickAnchorScaleButton.addEventListener(
+    "click",
+    toggleOneSidedScale
+  );
   quickDuplicateButton.addEventListener("click", duplicateSelectedObject);
   quickDeleteButton.addEventListener("click", deleteSelectedObject);
 
@@ -1241,6 +1915,58 @@ function installEvents() {
     desktopHelpPanel.classList.add("hidden");
     desktopHelpToggle.setAttribute("aria-expanded", "false");
   });
+
+  snapToggle?.addEventListener(
+    "click",
+    () => {
+      setSnapEnabled(
+        !state.snapEnabled
+      );
+    }
+  );
+
+  objectSnapToggle?.addEventListener(
+    "click",
+    () => {
+      setObjectSnapEnabled(
+        !state.objectSnapEnabled
+      );
+    }
+  );
+
+  saveProjectButton?.addEventListener(
+    "click",
+    () => {
+      saveProjectFile();
+
+      if (mobilePanels?.isMobile()) {
+        mobilePanels.closePanels();
+      }
+    }
+  );
+
+  loadProjectButton?.addEventListener(
+    "click",
+    () => {
+      projectFileInput?.click();
+    }
+  );
+
+  projectFileInput?.addEventListener(
+    "change",
+    async () => {
+      const file =
+        projectFileInput.files?.[0];
+
+      if (!file) return;
+
+      await loadProjectFile(file);
+
+      if (mobilePanels?.isMobile()) {
+        mobilePanels.closePanels();
+      }
+    }
+  );
 
   gridOpacityInput.addEventListener("input", (event) => {
     const percentage = Number(event.target.value);
@@ -1329,25 +2055,12 @@ function cleanup() {
 
   resizeObserver?.disconnect();
   desktopControls?.dispose?.();
+  oneSidedScaleController?.dispose?.();
   mapControls?.dispose();
   transformControls?.dispose();
 
   for (const object of state.objects) {
-    object.traverse((child) => {
-      if (isBuilding(object)) {
-        child.geometry?.dispose?.();
-      }
-
-      if (child.material && (isBuilding(object) || child.userData.editorMaterialLocal)) {
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
-
-        for (const material of materials) {
-          material.dispose?.();
-        }
-      }
-    });
+    disposeEditorObject(object);
   }
 
   ground?.geometry?.dispose?.();
