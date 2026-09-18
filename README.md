@@ -1,38 +1,49 @@
 # Resort Map Builder
 
-Base inicial del proyecto para construir un editor 3D ligero de mapas de resort.
+## Parte 2
 
-## Parte 1
+Esta etapa crea el espacio de trabajo tridimensional del proyecto.
 
-Esta versión únicamente comprueba que:
+### Archivos
 
-- `index.html` carga correctamente.
-- `style.css` está enlazado.
-- `app.js` se ejecuta.
-- Las rutas son relativas y compatibles con GitHub Pages.
-- La estructura ya está preparada para añadir el plano 3D en la Parte 2.
+- `index.html`: estructura de la interfaz.
+- `style.css`: apariencia y adaptación a distintas pantallas.
+- `app.js`: escena Three.js, cámara, cuadrícula y controles.
+- `README.md`: notas del proyecto.
 
-## Estructura
+### Qué incluye esta etapa
+
+- Plano 3D base.
+- Cuadrícula editable.
+- Cámara inclinada.
+- Zoom.
+- Paneo.
+- Rotación.
+- Vista superior.
+- Restablecer/centrar vista.
+- Control de opacidad del plano.
+- Control de opacidad de la cuadrícula.
+- Mostrar/ocultar cuadrícula.
+- Panel plegable.
+- Compatibilidad táctil.
+- Límite de pixel ratio para evitar carga innecesaria.
+
+### Three.js
+
+Esta versión usa Three.js `0.186.0` mediante import map y CDN.
+
+### GitHub Pages
+
+Los archivos están pensados para estar juntos en la raíz del repositorio:
 
 ```text
-resort-map-starter/
+/
 ├── index.html
 ├── style.css
 ├── app.js
+├── README.md
 ├── assets/
 └── data/
 ```
 
-## Probar en computadora
-
-Puedes abrir `index.html` directamente en el navegador.
-
-Para desarrollo futuro será mejor usar un servidor local sencillo, porque algunos módulos 3D modernos funcionan mejor mediante `http://localhost` que abriendo el archivo con `file://`.
-
-## GitHub Pages
-
-Sube el contenido a la raíz de un repositorio y activa GitHub Pages desde:
-
-Settings → Pages → Deploy from a branch → `main` → `/ (root)`
-
-La aplicación usa rutas relativas, así que puede publicarse dentro de un repositorio de proyecto.
+No borres todavía `assets/` ni `data/`. Se usarán en etapas posteriores.
