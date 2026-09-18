@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 6.4 · imagen guía con proporción libre y ajustes móviles."
+    content="Resort Map Builder · Parte 6.5 · navegación táctil optimizada y reinicio rápido de cámara."
   />
-  <title>Resort Map Builder · Parte 6.4</title>
+  <title>Resort Map Builder · Parte 6.5</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=6.4" />
+  <link rel="stylesheet" href="./style.css?v=6.5" />
 
   <script type="importmap">
   {
@@ -582,6 +582,20 @@
         </div>
       </section>
 
+      <!-- REINICIO RÁPIDO DE CÁMARA EN MÓVIL -->
+      <button
+        class="mobile-reset-view"
+        id="mobileResetView"
+        type="button"
+        aria-label="Restablecer vista 3D"
+        title="Restablecer vista"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5.2 8.1A7.4 7.4 0 1 1 4.8 15" />
+          <path d="M5.2 8.1V3.8M5.2 8.1H9.5" />
+        </svg>
+      </button>
+
       <!-- MOBILE DRAWER BACKDROP -->
       <button class="mobile-backdrop" id="mobileBackdrop" type="button" aria-label="Cerrar panel"></button>
 
@@ -676,12 +690,12 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 6.4 · Imagen libre + móvil mejorado</span>
+      <span>Parte 6.5 · Gestos táctiles + cámara</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=6.4"></script>
+  <script type="module" src="./app.js?v=6.5"></script>
 </body>
 </html>

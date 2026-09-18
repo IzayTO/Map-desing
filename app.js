@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.4";
-import { setupMobilePanels } from "./ui.js?v=6.4";
-import { createPlacementController } from "./placement.js?v=6.4";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.4";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.5";
+import { setupMobilePanels } from "./ui.js?v=6.5";
+import { createPlacementController } from "./placement.js?v=6.5";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.5";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.4";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.4";
+} from "./snap.js?v=6.5";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.5";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.4";
+} from "./project-io.js?v=6.5";
 
 window.__RMB_READY__ = false;
 
@@ -117,6 +117,7 @@ const modeButtons = [...document.querySelectorAll("[data-mode]")];
 const perspectiveViewButton = document.querySelector("#perspectiveView");
 const topViewButton = document.querySelector("#topView");
 const resetViewButton = document.querySelector("#resetView");
+const mobileResetViewButton = document.querySelector("#mobileResetView");
 
 const gridOpacityInput = document.querySelector("#gridOpacity");
 const gridOpacityValue = document.querySelector("#gridOpacityValue");
@@ -1129,6 +1130,13 @@ function createMapControls() {
   mapControls.panSpeed = 0.95;
   mapControls.rotateSpeed = 0.58;
   mapControls.zoomSpeed = 0.8;
+
+  // Móvil / táctil:
+  // 1 dedo = orbitar, 2 dedos = desplazar + pellizco = zoom.
+  // Estas asignaciones no alteran los controles de mouse/teclado en PC.
+  mapControls.touches.ONE = THREE.TOUCH.ROTATE;
+  mapControls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+
   mapControls.minDistance = 7;
   mapControls.maxDistance = 320;
   mapControls.minPolarAngle = Math.PI * 0.055;
@@ -2325,6 +2333,10 @@ function installEvents() {
   perspectiveViewButton.addEventListener("click", setPerspectiveView);
   topViewButton.addEventListener("click", setTopView);
   resetViewButton.addEventListener("click", resetView);
+
+  mobileResetViewButton?.addEventListener("click", () => {
+    setPerspectiveView();
+  });
 
   desktopHelpToggle?.addEventListener("click", () => {
     const hidden = desktopHelpPanel.classList.toggle("hidden");

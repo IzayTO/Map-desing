@@ -1,14 +1,26 @@
-# Resort Map Builder · Parte 6.4
+# Resort Map Builder · Parte 6.5
 
-Mejoras principales de esta versión:
+Esta versión conserva toda la Parte 6.4 y modifica únicamente navegación táctil / cámara móvil.
 
-- La imagen guía ya no se estira automáticamente al cargar.
-- Ahora entra grande, pero respetando su proporción original.
-- Se añadieron controles para cambiar el ancho y el largo manualmente.
-- Se añadieron botones para:
-  - Encajar la imagen respetando proporción.
-  - Llenar todo el plano estirándola.
-  - Restaurar su tamaño proporcional.
-- El zoom de cámara puede alejarse más para ver el plano completo.
-- En teléfono, los paneles de Vista / Proyecto / Propiedades ahora permiten mejor desplazamiento vertical.
-- `resort.json` guarda también el ancho, largo y proporción de la imagen guía.
+## Gestos en iPhone / iPad
+
+- **1 dedo + arrastrar:** orbitar / girar alrededor del punto observado.
+- **2 dedos + arrastrar:** desplazar el plano lateralmente.
+- **Pellizcar con 2 dedos:** acercar o alejar.
+- **Toque corto:** sigue sirviendo para seleccionar o colocar objetos.
+
+Los controles de mouse y teclado de escritorio no cambian.
+
+## Botón flotante de cámara
+
+En móvil aparece un botón flotante con una flecha circular sobre la barra inferior.
+Al tocarlo vuelve directamente a la vista 3D predeterminada y centra el plano.
+
+## Conservado
+
+- Imagen guía proporcional y escalable.
+- Guardar/cargar `resort.json`.
+- Imán de cuadrícula, objetos y suelo.
+- Props y escaleras.
+- Bloqueo, opacidad y escalado desde un lado.
+- Controles PC existentes.
