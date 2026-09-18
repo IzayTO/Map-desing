@@ -1,64 +1,47 @@
-# Resort Map Builder · Parte 4
+# Resort Map Builder · Parte 4.1 corregida
 
-La Parte 4 añade una biblioteca de props ligeros y mantiene el proyecto dividido por responsabilidades.
+Esta versión corrige el problema móvil visto en iPhone.
 
-## Archivos
+## IMPORTANTE
+
+Sube **todos** estos archivos a la raíz del repositorio:
 
 ```text
 /
 ├── index.html
 ├── style.css
 ├── app.js
-└── src/
-    └── props.js
+├── props.js
+├── ui.js
+└── README.md
 ```
 
-`props.js` es nuevo. Contiene únicamente la biblioteca procedural de objetos.
+No hace falta crear la carpeta `src` en esta revisión. `props.js` y `ui.js` están en la raíz para que sea más fácil subirlos desde GitHub móvil.
 
-## Props incluidos
+## Qué se corrigió
 
-- Palmera
-- Árbol
-- Arbusto
-- Poste
-- Fuente
-- Puente
-- Camino
-- Zona de agua
+- Biblioteca de props siempre accesible en móvil.
+- Lista de objetos accesible.
+- Panel de propiedades accesible.
+- Panel de vista accesible.
+- Botón `Vista 3D`.
+- Botón `Desde arriba`.
+- Opacidad de retícula.
+- Opacidad del plano.
+- Mostrar/ocultar retícula.
+- Barra inferior móvil con Props / Objetos / Editar / Vista.
+- Paneles convertidos en cajones en iPhone para no tapar permanentemente el plano.
+- Se añadió cache-busting `?v=4.1` para evitar que Safari/GitHub Pages reutilicen `style.css` o `app.js` antiguos.
+- Se mantiene el sistema de edificios y todos los props de la Parte 4.
 
-No requieren archivos GLB ni texturas externas.
+## Señal de que JavaScript cargó correctamente
 
-## Reglas
+Al abrir la página debe aparecer un `Edificio 1` en el centro del plano.
 
-### Vegetación, poste y fuente
+Si el plano aparece vacío, significa que falta alguno de estos archivos:
 
-Tienen escala uniforme para no deformarlos.
+- `app.js`
+- `props.js`
+- `ui.js`
 
-### Puente, camino y agua
-
-Pueden cambiar ancho, altura y largo.
-
-### Edificios
-
-Conservan el sistema de la Parte 3.
-
-## Transformaciones
-
-- `W`: mover.
-- `E`: rotar.
-- `R`: escalar.
-- `Esc`: deseleccionar.
-- `Delete / Backspace`: eliminar.
-- `Ctrl/Cmd + D`: duplicar.
-
-## Escala del proyecto
-
-`1 unidad 3D = 1 metro`.
-
-## Rendimiento
-
-Los props reutilizan geometrías y materiales para reducir consumo de memoria.
-Los objetos siguen siendo independientes para permitir selección y edición individual.
-
-Si en una etapa futura el mapa contiene cientos o miles de elementos repetidos,
-la arquitectura permite migrar categorías repetitivas a `THREE.InstancedMesh`.
+o que GitHub Pages todavía está publicando una versión anterior.

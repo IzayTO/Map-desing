@@ -6,11 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 4. Constructor 3D con edificios y props ligeros."
+    content="Resort Map Builder · Parte 4 corregida para escritorio y móvil."
   />
   <title>Resort Map Builder · Parte 4</title>
 
-  <link rel="stylesheet" href="./style.css" />
+  <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
+  <link rel="stylesheet" href="./style.css?v=4.1" />
 
   <script type="importmap">
   {
@@ -27,139 +28,124 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">RM</div>
-
         <div class="brand-copy">
           <p class="eyebrow">Resort Map Builder</p>
-          <h1>Constructor de plano 3D</h1>
+          <h1>Constructor 3D</h1>
         </div>
       </div>
 
       <div class="mode-toolbar" aria-label="Herramientas de transformación">
         <button class="tool-button active" type="button" data-mode="translate">
-          <span class="tool-icon">↔</span>
-          <span>Mover</span>
+          <span class="tool-icon">↔</span><span>Mover</span>
         </button>
-
         <button class="tool-button" type="button" data-mode="rotate">
-          <span class="tool-icon">⟳</span>
-          <span>Rotar</span>
+          <span class="tool-icon">⟳</span><span>Rotar</span>
         </button>
-
         <button class="tool-button" type="button" data-mode="scale">
-          <span class="tool-icon">⤢</span>
-          <span>Escalar</span>
+          <span class="tool-icon">⤢</span><span>Escalar</span>
         </button>
       </div>
 
       <div class="status" aria-live="polite">
         <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Iniciando constructor…</span>
+        <span id="statusText">Iniciando…</span>
       </div>
     </header>
 
     <main class="workspace" aria-label="Constructor 3D">
       <div id="viewport" aria-label="Plano tridimensional interactivo"></div>
 
-      <aside class="library-panel panel" aria-label="Biblioteca de objetos">
+      <div class="workspace-badge" aria-hidden="true">
+        <strong>Plano 3D</strong>
+        <span id="objectCounterBadge">0 objetos</span>
+      </div>
+
+      <!-- BIBLIOTECA -->
+      <aside class="panel library-panel" id="libraryPanel" aria-label="Biblioteca de objetos">
         <div class="panel-heading">
           <div>
             <span class="panel-kicker">BIBLIOTECA</span>
             <strong>Añadir al plano</strong>
           </div>
+          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar biblioteca">×</button>
         </div>
 
         <div class="library-scroll">
           <section class="library-section">
             <span class="library-section-title">Arquitectura</span>
-
             <button class="library-item" type="button" data-create="building">
               <span class="library-symbol symbol-building" aria-hidden="true"></span>
-              <span>
-                <strong>Edificio</strong>
-                <small>Volumen editable</small>
-              </span>
+              <span><strong>Edificio</strong><small>Volumen editable</small></span>
             </button>
           </section>
 
           <section class="library-section">
             <span class="library-section-title">Vegetación</span>
-
             <div class="library-grid">
               <button class="library-item compact" type="button" data-create="palm">
-                <span class="library-emoji" aria-hidden="true">🌴</span>
-                <span><strong>Palmera</strong></span>
+                <span class="library-emoji" aria-hidden="true">🌴</span><span><strong>Palmera</strong></span>
               </button>
-
               <button class="library-item compact" type="button" data-create="tree">
-                <span class="library-emoji" aria-hidden="true">🌳</span>
-                <span><strong>Árbol</strong></span>
+                <span class="library-emoji" aria-hidden="true">🌳</span><span><strong>Árbol</strong></span>
               </button>
-
               <button class="library-item compact" type="button" data-create="shrub">
-                <span class="library-emoji" aria-hidden="true">🌿</span>
-                <span><strong>Arbusto</strong></span>
+                <span class="library-emoji" aria-hidden="true">🌿</span><span><strong>Arbusto</strong></span>
               </button>
             </div>
           </section>
 
           <section class="library-section">
             <span class="library-section-title">Elementos</span>
-
             <div class="library-grid">
               <button class="library-item compact" type="button" data-create="lamp">
-                <span class="library-glyph" aria-hidden="true">│•</span>
-                <span><strong>Poste</strong></span>
+                <span class="library-glyph" aria-hidden="true">│•</span><span><strong>Poste</strong></span>
               </button>
-
               <button class="library-item compact" type="button" data-create="fountain">
-                <span class="library-glyph" aria-hidden="true">◉</span>
-                <span><strong>Fuente</strong></span>
+                <span class="library-glyph" aria-hidden="true">◉</span><span><strong>Fuente</strong></span>
               </button>
-
               <button class="library-item compact" type="button" data-create="bridge">
-                <span class="library-glyph" aria-hidden="true">⌒</span>
-                <span><strong>Puente</strong></span>
+                <span class="library-glyph" aria-hidden="true">⌒</span><span><strong>Puente</strong></span>
               </button>
             </div>
           </section>
 
           <section class="library-section">
             <span class="library-section-title">Superficies</span>
-
             <div class="library-grid">
               <button class="library-item compact" type="button" data-create="path">
-                <span class="surface-swatch path-swatch" aria-hidden="true"></span>
-                <span><strong>Camino</strong></span>
+                <span class="surface-swatch path-swatch" aria-hidden="true"></span><span><strong>Camino</strong></span>
               </button>
-
               <button class="library-item compact" type="button" data-create="water">
-                <span class="surface-swatch water-swatch" aria-hidden="true"></span>
-                <span><strong>Agua</strong></span>
+                <span class="surface-swatch water-swatch" aria-hidden="true"></span><span><strong>Agua</strong></span>
               </button>
             </div>
           </section>
         </div>
       </aside>
 
-      <aside class="scene-panel panel" aria-label="Objetos de la escena">
+      <!-- ESCENA -->
+      <aside class="panel scene-panel" id="scenePanel" aria-label="Objetos de la escena">
         <div class="panel-heading">
           <div>
             <span class="panel-kicker">ESCENA</span>
             <strong>Objetos</strong>
           </div>
-
-          <span class="count-badge" id="objectCount">0</span>
+          <div class="panel-heading-actions">
+            <span class="count-badge" id="objectCount">0</span>
+            <button class="panel-close" type="button" data-close-panel aria-label="Cerrar objetos">×</button>
+          </div>
         </div>
-
         <div class="scene-list" id="sceneList" aria-live="polite"></div>
       </aside>
 
-      <aside class="properties-panel panel" aria-label="Propiedades del objeto">
+      <!-- PROPIEDADES -->
+      <aside class="panel properties-panel" id="propertiesPanel" aria-label="Propiedades del objeto">
         <div class="panel-heading">
           <div>
             <span class="panel-kicker" id="propertiesKind">SELECCIÓN</span>
             <strong id="propertiesTitle">Sin selección</strong>
           </div>
+          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar propiedades">×</button>
         </div>
 
         <div class="empty-properties" id="emptyProperties">
@@ -174,18 +160,15 @@
 
           <div id="dimensionFields">
             <div class="section-label">Dimensiones</div>
-
             <div class="field-grid">
               <label class="field">
                 <span>Ancho X · m</span>
                 <input id="objectWidth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
               </label>
-
               <label class="field">
                 <span>Altura Y · m</span>
                 <input id="objectHeight" type="number" min="0.05" max="100" step="0.1" inputmode="decimal" />
               </label>
-
               <label class="field">
                 <span>Largo Z · m</span>
                 <input id="objectDepth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
@@ -195,7 +178,6 @@
 
           <div id="uniformSizeFields" class="hidden">
             <div class="section-label">Tamaño</div>
-
             <label class="field field-wide">
               <span>Escala uniforme</span>
               <div class="range-with-value">
@@ -206,18 +188,15 @@
           </div>
 
           <div class="section-label">Posición</div>
-
           <div class="field-grid">
             <label class="field">
               <span>X</span>
               <input id="positionX" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
             </label>
-
             <label class="field">
               <span>Y</span>
               <input id="positionY" type="number" min="-50" max="120" step="0.1" inputmode="decimal" />
             </label>
-
             <label class="field">
               <span>Z</span>
               <input id="positionZ" type="number" min="-250" max="250" step="0.1" inputmode="decimal" />
@@ -225,7 +204,6 @@
           </div>
 
           <div class="section-label">Rotación</div>
-
           <label class="field field-wide">
             <span>Giro Y · grados</span>
             <input id="rotationY" type="number" min="-360" max="360" step="1" inputmode="decimal" />
@@ -238,29 +216,75 @@
         </div>
       </aside>
 
-      <section class="view-panel panel" aria-label="Vista del plano">
-        <div class="compact-control">
-          <div class="control-row">
-            <span>Retícula</span>
-            <span id="gridOpacityValue">55%</span>
+      <!-- VISTA -->
+      <section class="panel view-panel" id="viewPanel" aria-label="Controles de vista">
+        <div class="panel-heading">
+          <div>
+            <span class="panel-kicker">CÁMARA</span>
+            <strong>Vista</strong>
+          </div>
+          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar vista">×</button>
+        </div>
+
+        <div class="view-content">
+          <div class="view-button-grid">
+            <button class="view-main-button active" id="perspectiveView" type="button">
+              <span class="view-icon">◇</span>
+              Vista 3D
+            </button>
+            <button class="view-main-button" id="topView" type="button">
+              <span class="view-icon">□</span>
+              Desde arriba
+            </button>
           </div>
 
-          <input id="gridOpacity" type="range" min="0" max="100" value="55" />
-        </div>
+          <div class="view-slider">
+            <div class="control-row">
+              <span>Opacidad de retícula</span>
+              <span id="gridOpacityValue">55%</span>
+            </div>
+            <input id="gridOpacity" type="range" min="0" max="100" value="55" />
+          </div>
 
-        <div class="view-actions">
-          <button class="mini-button" id="resetView" type="button">Centrar</button>
-          <button class="mini-button" id="topView" type="button">Arriba</button>
-          <button
-            class="mini-switch"
-            id="gridToggle"
-            type="button"
-            role="switch"
-            aria-checked="true"
-            aria-label="Mostrar u ocultar retícula"
-          >#</button>
+          <div class="view-slider">
+            <div class="control-row">
+              <span>Opacidad del plano</span>
+              <span id="groundOpacityValue">100%</span>
+            </div>
+            <input id="groundOpacity" type="range" min="15" max="100" value="100" />
+          </div>
+
+          <div class="view-footer-actions">
+            <button class="mini-button" id="resetView" type="button">Centrar vista</button>
+            <button
+              class="mini-switch"
+              id="gridToggle"
+              type="button"
+              role="switch"
+              aria-checked="true"
+            >Retícula</button>
+          </div>
         </div>
       </section>
+
+      <!-- MOBILE DRAWER BACKDROP -->
+      <button class="mobile-backdrop" id="mobileBackdrop" type="button" aria-label="Cerrar panel"></button>
+
+      <!-- MOBILE DOCK: siempre visible en teléfono -->
+      <nav class="mobile-dock" aria-label="Herramientas del editor">
+        <button type="button" data-open-panel="libraryPanel">
+          <span>＋</span><small>Props</small>
+        </button>
+        <button type="button" data-open-panel="scenePanel">
+          <span>▤</span><small>Objetos</small>
+        </button>
+        <button type="button" data-open-panel="propertiesPanel">
+          <span>⌁</span><small>Editar</small>
+        </button>
+        <button type="button" data-open-panel="viewPanel">
+          <span>◇</span><small>Vista</small>
+        </button>
+      </nav>
 
       <div class="help-pill">
         <span><b>Clic:</b> seleccionar</span>
@@ -273,17 +297,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage"></p>
+          <p id="fatalMessage">Revisa que todos los archivos de la versión 4.1 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Parte 4 · Props ligeros y superficies</span>
+      <span>Parte 4.1 · Interfaz corregida</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
-  <script type="module" src="./app.js"></script>
+  <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
+  <script type="module" src="./app.js?v=4.1"></script>
 </body>
 </html>

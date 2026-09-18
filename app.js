@@ -1,20 +1,17 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import {
-  PROP_CATALOG,
-  createProp,
-  disposePropLibrary,
-} from "./src/props.js";
+import { PROP_CATALOG, createProp, disposePropLibrary } from "./props.js?v=4.1";
+import { setupMobilePanels } from "./ui.js?v=4.1";
 
-// --------------------------------------------------
+window.__RMB_READY__ = false;
+
 // DOM
-// --------------------------------------------------
-
 const viewport = document.querySelector("#viewport");
 const statusDot = document.querySelector("#statusDot");
 const statusText = document.querySelector("#statusText");
 const selectionStatus = document.querySelector("#selectionStatus");
+const objectCounterBadge = document.querySelector("#objectCounterBadge");
 
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
@@ -27,16 +24,13 @@ const emptyProperties = document.querySelector("#emptyProperties");
 const propertiesContent = document.querySelector("#propertiesContent");
 const propertiesKind = document.querySelector("#propertiesKind");
 const propertiesTitle = document.querySelector("#propertiesTitle");
-
 const objectNameInput = document.querySelector("#objectName");
 
 const dimensionFields = document.querySelector("#dimensionFields");
 const uniformSizeFields = document.querySelector("#uniformSizeFields");
-
 const widthInput = document.querySelector("#objectWidth");
 const heightInput = document.querySelector("#objectHeight");
 const depthInput = document.querySelector("#objectDepth");
-
 const uniformSizeInput = document.querySelector("#uniformSize");
 const uniformSizeValue = document.querySelector("#uniformSizeValue");
 
@@ -47,18 +41,17 @@ const rotationYInput = document.querySelector("#rotationY");
 
 const duplicateButton = document.querySelector("#duplicateObject");
 const deleteButton = document.querySelector("#deleteObject");
-
 const modeButtons = [...document.querySelectorAll("[data-mode]")];
+
+const perspectiveViewButton = document.querySelector("#perspectiveView");
+const topViewButton = document.querySelector("#topView");
+const resetViewButton = document.querySelector("#resetView");
 
 const gridOpacityInput = document.querySelector("#gridOpacity");
 const gridOpacityValue = document.querySelector("#gridOpacityValue");
+const groundOpacityInput = document.querySelector("#groundOpacity");
+const groundOpacityValue = document.querySelector("#groundOpacityValue");
 const gridToggle = document.querySelector("#gridToggle");
-const resetViewButton = document.querySelector("#resetView");
-const topViewButton = document.querySelector("#topView");
-
-// --------------------------------------------------
-// ESTADO
-// --------------------------------------------------
 
 const INITIAL_CAMERA = new THREE.Vector3(42, 36, 48);
 const INITIAL_TARGET = new THREE.Vector3(0, 0, 0);
@@ -72,11 +65,13 @@ const state = {
   selected: null,
   transformMode: "translate",
   gridOpacity: 0.55,
+  groundOpacity: 1,
   gridVisible: true,
   nextBuildingNumber: 1,
   nextPropNumbers: {},
   pointerDown: null,
   lastUniformScale: 1,
+  viewMode: "perspective",
 };
 
 let scene;
@@ -88,17 +83,12 @@ let transformHelper;
 let ground;
 let grid;
 let selectionBox;
-
 let resizeObserver;
 let animationFrame = 0;
 let isPageVisible = true;
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-
-// --------------------------------------------------
-// UTILIDADES
-// --------------------------------------------------
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -127,12 +117,9 @@ function makeId(prefix) {
 
 function isEditingField() {
   const active = document.activeElement;
-
-  return (
-    active instanceof HTMLInputElement ||
+  return active instanceof HTMLInputElement ||
     active instanceof HTMLTextAreaElement ||
-    active instanceof HTMLSelectElement
-  );
+    active instanceof HTMLSelectElement;
 }
 
 function isUniformObject(object) {
@@ -144,39 +131,25 @@ function isBuilding(object) {
 }
 
 function isSurfaceLike(object) {
-  return (
-    object?.userData?.propType === "path" ||
-    object?.userData?.propType === "water"
-  );
+  return object?.userData?.propType === "path" ||
+    object?.userData?.propType === "water";
 }
 
 function objectKindLabel(object) {
   if (!object) return "";
-
-  if (isBuilding(object)) {
-    return "EDIFICIO";
-  }
-
-  const type = object.userData.propType;
-  return (PROP_CATALOG[type]?.label || "PROP").toUpperCase();
+  if (isBuilding(object)) return "EDIFICIO";
+  return (PROP_CATALOG[object.userData.propType]?.label || "PROP").toUpperCase();
 }
 
 function showFatalError(message) {
-  if (fatalMessage) {
-    fatalMessage.textContent = message;
-  }
-
+  if (fatalMessage) fatalMessage.textContent = message;
   fatalError?.classList.add("visible");
-
-  if (statusText) {
-    statusText.textContent = "Error al iniciar";
-  }
+  if (statusText) statusText.textContent = "Error al iniciar";
 }
 
 function canUseWebGL() {
   try {
     const canvas = document.createElement("canvas");
-
     return Boolean(
       (window.WebGL2RenderingContext && canvas.getContext("webgl2")) ||
       (window.WebGLRenderingContext &&
@@ -186,10 +159,6 @@ function canUseWebGL() {
     return false;
   }
 }
-
-// --------------------------------------------------
-// ESCENA
-// --------------------------------------------------
 
 function createScene() {
   scene = new THREE.Scene();
@@ -203,10 +172,8 @@ function createScene() {
     alpha: false,
     powerPreference: "high-performance",
   });
-
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-
   viewport.appendChild(renderer.domElement);
 
   createLights();
@@ -218,7 +185,9 @@ function createScene() {
 
   resizeViewport();
   installEvents();
+  setupMobilePanels();
 
+  // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
   createBuilding({
     name: "Edificio 1",
     width: 8,
@@ -229,23 +198,16 @@ function createScene() {
     z: 0,
     select: true,
   });
-
   state.nextBuildingNumber = 2;
 
   statusDot?.classList.add("ready");
-
-  if (statusText) {
-    statusText.textContent = "Constructor 3D funcionando";
-  }
-
+  if (statusText) statusText.textContent = "Constructor 3D funcionando";
+  window.__RMB_READY__ = true;
   startAnimation();
 }
 
 function createLights() {
-  scene.add(
-    new THREE.HemisphereLight(0xffffff, 0xc8c3ba, 2.15)
-  );
-
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc8c3ba, 2.15));
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
   keyLight.position.set(22, 38, 26);
   scene.add(keyLight);
@@ -259,29 +221,23 @@ function createGround() {
       roughness: 1,
       metalness: 0,
       side: THREE.DoubleSide,
+      transparent: true,
+      opacity: state.groundOpacity,
     })
   );
-
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
-  ground.name = "Ground";
-
   scene.add(ground);
 }
 
 function createGrid() {
   grid = new THREE.GridHelper(140, 70, 0x777777, 0xc7c7c1);
-
-  const materials = Array.isArray(grid.material)
-    ? grid.material
-    : [grid.material];
-
+  const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
   for (const material of materials) {
     material.transparent = true;
     material.opacity = state.gridOpacity;
     material.depthWrite = false;
   }
-
   scene.add(grid);
 }
 
@@ -296,34 +252,26 @@ function createOriginMarker() {
       depthWrite: false,
     })
   );
-
   marker.rotation.x = -Math.PI / 2;
   marker.position.y = 0.018;
-
   scene.add(marker);
 }
 
 function createMapControls() {
   mapControls = new MapControls(camera, renderer.domElement);
-
   mapControls.enableDamping = true;
   mapControls.dampingFactor = 0.075;
-
   mapControls.enablePan = true;
   mapControls.enableRotate = true;
   mapControls.enableZoom = true;
   mapControls.zoomToCursor = true;
-
   mapControls.panSpeed = 0.95;
   mapControls.rotateSpeed = 0.58;
   mapControls.zoomSpeed = 0.8;
-
   mapControls.minDistance = 7;
   mapControls.maxDistance = 180;
-
   mapControls.minPolarAngle = Math.PI * 0.055;
   mapControls.maxPolarAngle = Math.PI * 0.495;
-
   mapControls.target.copy(INITIAL_TARGET);
   mapControls.update();
 }
@@ -332,13 +280,11 @@ function createTransformControls() {
   transformControls = new TransformControls(camera, renderer.domElement);
   transformControls.setMode(state.transformMode);
   transformControls.setSize(0.92);
-
   transformHelper = transformControls.getHelper();
   scene.add(transformHelper);
 
   transformControls.addEventListener("mouseDown", () => {
     mapControls.enabled = false;
-
     if (state.selected && isUniformObject(state.selected)) {
       state.lastUniformScale = state.selected.scale.x;
     }
@@ -355,10 +301,6 @@ function createTransformControls() {
   });
 }
 
-// --------------------------------------------------
-// EDIFICIOS
-// --------------------------------------------------
-
 function createBuilding({
   name,
   width = 6,
@@ -370,47 +312,27 @@ function createBuilding({
   rotationY = 0,
   select = true,
 } = {}) {
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-
-  const material = new THREE.MeshStandardMaterial({
-    color: BUILDING_COLOR,
-    roughness: 0.86,
-    metalness: 0,
-  });
-
-  const object = new THREE.Mesh(geometry, material);
+  const object = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({
+      color: BUILDING_COLOR,
+      roughness: 0.86,
+      metalness: 0,
+    })
+  );
 
   object.userData.editorType = "building";
   object.userData.scalePolicy = "free";
   object.userData.id = makeId("building");
-
-  object.name =
-    name || `Edificio ${state.nextBuildingNumber++}`;
-
+  object.name = name || `Edificio ${state.nextBuildingNumber++}`;
   object.scale.set(
     clamp(width, 0.2, 200),
     clamp(height, 0.2, 100),
     clamp(depth, 0.2, 200)
   );
-
   object.position.set(x, y, z);
   object.rotation.y = rotationY;
 
-  addBuildingEdges(object);
-
-  scene.add(object);
-  state.objects.push(object);
-
-  refreshSceneList();
-
-  if (select) {
-    selectObject(object);
-  }
-
-  return object;
-}
-
-function addBuildingEdges(object) {
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(object.geometry),
     new THREE.LineBasicMaterial({
@@ -419,26 +341,21 @@ function addBuildingEdges(object) {
       opacity: 0.42,
     })
   );
-
-  edges.name = "BuildingEdges";
   edges.raycast = () => {};
   object.add(edges);
+
+  scene.add(object);
+  state.objects.push(object);
+  refreshSceneList();
+
+  if (select) selectObject(object);
+  return object;
 }
 
-// --------------------------------------------------
-// PROPS
-// --------------------------------------------------
-
 function nextPropName(type) {
-  const current =
-    (state.nextPropNumbers[type] || 0) + 1;
-
+  const current = (state.nextPropNumbers[type] || 0) + 1;
   state.nextPropNumbers[type] = current;
-
-  const base =
-    PROP_CATALOG[type]?.defaultName || "Prop";
-
-  return `${base} ${current}`;
+  return `${PROP_CATALOG[type]?.defaultName || "Prop"} ${current}`;
 }
 
 function createEditorProp(type, {
@@ -450,28 +367,19 @@ function createEditorProp(type, {
   name = null,
 } = {}) {
   const object = createProp(type);
-
   object.userData.id = makeId(type);
   object.name = name || nextPropName(type);
-
   object.position.set(x, 0, z);
   object.rotation.y = rotationY;
 
   if (isUniformObject(object)) {
-    object.scale.setScalar(
-      clamp(scale, 0.25, 3)
-    );
+    object.scale.setScalar(clamp(scale, 0.25, 3));
   }
 
   scene.add(object);
   state.objects.push(object);
-
   refreshSceneList();
-
-  if (select) {
-    selectObject(object);
-  }
-
+  if (select) selectObject(object);
   return object;
 }
 
@@ -485,7 +393,6 @@ function createFromLibrary(type) {
       z: center.z,
       select: true,
     });
-
     return;
   }
 
@@ -496,10 +403,6 @@ function createFromLibrary(type) {
   });
 }
 
-// --------------------------------------------------
-// SELECCIÓN / DUPLICADO / ELIMINADO
-// --------------------------------------------------
-
 function selectObject(object) {
   if (!object || !state.objects.includes(object)) {
     deselectObject();
@@ -507,7 +410,6 @@ function selectObject(object) {
   }
 
   state.selected = object;
-
   transformControls.attach(object);
 
   if (isUniformObject(object)) {
@@ -516,27 +418,21 @@ function selectObject(object) {
 
   configureTransformForSelection();
   createSelectionBox(object);
-
   refreshSceneList();
   updatePropertiesFromSelection();
 }
 
 function deselectObject() {
   state.selected = null;
-
   transformControls.detach();
   removeSelectionBox();
-
   refreshSceneList();
   updatePropertiesFromSelection();
 }
 
 function duplicateSelectedObject() {
   const source = state.selected;
-
-  if (!source) {
-    return;
-  }
+  if (!source) return;
 
   if (isBuilding(source)) {
     return createBuilding({
@@ -552,9 +448,7 @@ function duplicateSelectedObject() {
     });
   }
 
-  const type = source.userData.propType;
-
-  const clone = createEditorProp(type, {
+  const clone = createEditorProp(source.userData.propType, {
     name: `${source.name} copia`,
     x: source.position.x + 1.5,
     z: source.position.z + 1.5,
@@ -564,21 +458,14 @@ function duplicateSelectedObject() {
   });
 
   clone.position.y = source.position.y;
-
-  if (!isUniformObject(source)) {
-    clone.scale.copy(source.scale);
-  }
-
+  if (!isUniformObject(source)) clone.scale.copy(source.scale);
   selectObject(clone);
   return clone;
 }
 
 function deleteSelectedObject() {
   const object = state.selected;
-
-  if (!object) {
-    return;
-  }
+  if (!object) return;
 
   transformControls.detach();
   scene.remove(object);
@@ -586,27 +473,15 @@ function deleteSelectedObject() {
   if (isBuilding(object)) {
     object.traverse((child) => {
       child.geometry?.dispose?.();
-
       if (child.material) {
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
-
-        for (const material of materials) {
-          material.dispose?.();
-        }
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) material.dispose?.();
       }
     });
   }
 
-  // Los props reutilizan geometrías/materiales compartidos.
-  // Por eso no se eliminan sus recursos individuales aquí.
-
-  state.objects =
-    state.objects.filter((item) => item !== object);
-
+  state.objects = state.objects.filter((item) => item !== object);
   state.selected = null;
-
   removeSelectionBox();
   refreshSceneList();
   updatePropertiesFromSelection();
@@ -614,19 +489,14 @@ function deleteSelectedObject() {
 
 function createSelectionBox(object) {
   removeSelectionBox();
-
-  selectionBox =
-    new THREE.BoxHelper(object, SELECTED_EDGE_COLOR);
-
+  selectionBox = new THREE.BoxHelper(object, SELECTED_EDGE_COLOR);
   if (selectionBox.material) {
     selectionBox.material.transparent = true;
     selectionBox.material.opacity = 0.92;
     selectionBox.material.depthTest = false;
   }
-
   selectionBox.renderOrder = 999;
   selectionBox.raycast = () => {};
-
   scene.add(selectionBox);
 }
 
@@ -635,53 +505,34 @@ function updateSelectionBox() {
 }
 
 function removeSelectionBox() {
-  if (!selectionBox) {
-    return;
-  }
-
+  if (!selectionBox) return;
   scene.remove(selectionBox);
   selectionBox.geometry?.dispose?.();
   selectionBox.material?.dispose?.();
   selectionBox = null;
 }
 
-// --------------------------------------------------
-// TRANSFORMACIONES Y REGLAS
-// --------------------------------------------------
-
 function setTransformMode(mode) {
-  if (!["translate", "rotate", "scale"].includes(mode)) {
-    return;
-  }
-
+  if (!["translate", "rotate", "scale"].includes(mode)) return;
   state.transformMode = mode;
   transformControls.setMode(mode);
-
   configureTransformForSelection();
 
   for (const button of modeButtons) {
-    button.classList.toggle(
-      "active",
-      button.dataset.mode === mode
-    );
+    button.classList.toggle("active", button.dataset.mode === mode);
   }
 }
 
 function configureTransformForSelection() {
   const object = state.selected;
-
   transformControls.showX = true;
   transformControls.showY = true;
   transformControls.showZ = true;
-
-  if (!object) {
-    return;
-  }
+  if (!object) return;
 
   const mode = state.transformMode;
 
   if (mode === "rotate") {
-    // Para este editor 2.5D solo necesitamos giro sobre Y.
     transformControls.showX = false;
     transformControls.showY = true;
     transformControls.showZ = false;
@@ -690,74 +541,40 @@ function configureTransformForSelection() {
   }
 
   if (mode === "translate") {
-    if (!isBuilding(object)) {
-      // Los props viven pegados al plano.
-      transformControls.showY = false;
-    }
-
+    if (!isBuilding(object)) transformControls.showY = false;
     transformControls.setSpace("world");
     return;
   }
 
   if (mode === "scale") {
     transformControls.setSpace("local");
-
-    if (isUniformObject(object)) {
-      // Se muestran los tres ejes, pero el resultado se normaliza
-      // inmediatamente para conservar escala uniforme.
-      transformControls.showX = true;
-      transformControls.showY = true;
-      transformControls.showZ = true;
-    }
-
-    if (isSurfaceLike(object)) {
-      // Caminos y agua se editan como superficies: ancho y largo.
-      transformControls.showY = false;
-    }
+    if (isSurfaceLike(object)) transformControls.showY = false;
   }
 }
 
 function applySelectionConstraints() {
   const object = state.selected;
-
-  if (!object) {
-    return;
-  }
+  if (!object) return;
 
   if (!isBuilding(object) && state.transformMode === "translate") {
     object.position.y = 0;
   }
 
-  if (
-    isUniformObject(object) &&
-    state.transformMode === "scale"
-  ) {
+  if (isUniformObject(object) && state.transformMode === "scale") {
     const previous = state.lastUniformScale;
-
-    const candidates = [
-      object.scale.x,
-      object.scale.y,
-      object.scale.z,
-    ];
-
+    const candidates = [object.scale.x, object.scale.y, object.scale.z];
     let changed = candidates[0];
     let largestDelta = Math.abs(candidates[0] - previous);
 
     for (const candidate of candidates.slice(1)) {
       const delta = Math.abs(candidate - previous);
-
       if (delta > largestDelta) {
         largestDelta = delta;
         changed = candidate;
       }
     }
 
-    const uniform = clamp(
-      Math.abs(changed),
-      0.25,
-      3
-    );
-
+    const uniform = clamp(Math.abs(changed), 0.25, 3);
     object.scale.setScalar(uniform);
     state.lastUniformScale = uniform;
   }
@@ -769,25 +586,19 @@ function applySelectionConstraints() {
   }
 }
 
-// --------------------------------------------------
-// LISTA DE ESCENA
-// --------------------------------------------------
-
 function refreshSceneList() {
   sceneList.replaceChildren();
 
   for (const object of state.objects) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className =
-      `scene-row${object === state.selected ? " selected" : ""}`;
+    row.className = `scene-row${object === state.selected ? " selected" : ""}`;
 
     const icon = document.createElement("span");
     icon.className = "scene-icon";
-    icon.textContent =
-      isBuilding(object)
-        ? "B"
-        : (PROP_CATALOG[object.userData.propType]?.label || "P").slice(0, 1);
+    icon.textContent = isBuilding(object)
+      ? "B"
+      : (PROP_CATALOG[object.userData.propType]?.label || "P").slice(0, 1);
 
     const name = document.createElement("span");
     name.className = "scene-name";
@@ -795,22 +606,18 @@ function refreshSceneList() {
 
     const type = document.createElement("span");
     type.className = "scene-type";
-    type.textContent =
-      isBuilding(object)
-        ? "edif."
-        : PROP_CATALOG[object.userData.propType]?.label.toLowerCase() || "prop";
+    type.textContent = isBuilding(object)
+      ? "edif."
+      : PROP_CATALOG[object.userData.propType]?.label.toLowerCase() || "prop";
 
     row.append(icon, name, type);
-
-    row.addEventListener("click", () => {
-      selectObject(object);
-    });
-
+    row.addEventListener("click", () => selectObject(object));
     sceneList.appendChild(row);
   }
 
-  objectCount.textContent =
-    String(state.objects.length);
+  objectCount.textContent = String(state.objects.length);
+  objectCounterBadge.textContent =
+    `${state.objects.length} ${state.objects.length === 1 ? "objeto" : "objetos"}`;
 
   if (state.objects.length === 0) {
     const empty = document.createElement("div");
@@ -819,10 +626,6 @@ function refreshSceneList() {
     sceneList.appendChild(empty);
   }
 }
-
-// --------------------------------------------------
-// PROPIEDADES
-// --------------------------------------------------
 
 function updatePropertiesFromSelection() {
   const object = state.selected;
@@ -841,27 +644,18 @@ function updatePropertiesFromSelection() {
   propertiesKind.textContent = objectKindLabel(object);
   propertiesTitle.textContent = object.name;
   selectionStatus.textContent = `${object.name} seleccionado`;
-
   objectNameInput.value = object.name;
 
   const uniform = isUniformObject(object);
-
   dimensionFields.classList.toggle("hidden", uniform);
   uniformSizeFields.classList.toggle("hidden", !uniform);
 
   if (uniform) {
-    const percentage =
-      Math.round(object.scale.x * 100);
-
-    uniformSizeInput.value = String(
-      clamp(percentage, 25, 300)
-    );
-
-    uniformSizeValue.textContent =
-      `${percentage}%`;
+    const percentage = Math.round(object.scale.x * 100);
+    uniformSizeInput.value = String(clamp(percentage, 25, 300));
+    uniformSizeValue.textContent = `${percentage}%`;
   } else {
     const dimensions = getEditableDimensions(object);
-
     widthInput.value = round2(dimensions.x);
     heightInput.value = round2(dimensions.y);
     depthInput.value = round2(dimensions.z);
@@ -870,22 +664,13 @@ function updatePropertiesFromSelection() {
   positionXInput.value = round2(object.position.x);
   positionYInput.value = round2(object.position.y);
   positionZInput.value = round2(object.position.z);
-
-  // Props viven en el plano y no necesitan Y manual.
   positionYInput.disabled = !isBuilding(object);
-
-  rotationYInput.value =
-    round2(degrees(object.rotation.y));
+  rotationYInput.value = round2(degrees(object.rotation.y));
 }
 
 function getEditableDimensions(object) {
-  if (isBuilding(object)) {
-    return object.scale;
-  }
-
-  const base =
-    object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
-
+  if (isBuilding(object)) return object.scale;
+  const base = object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
   return {
     x: base.x * object.scale.x,
     y: base.y * object.scale.y,
@@ -899,80 +684,32 @@ function setEditableDimensions(object, width, height, depth) {
     return;
   }
 
-  const base =
-    object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
-
-  object.scale.set(
-    width / base.x,
-    height / base.y,
-    depth / base.z
-  );
+  const base = object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
+  object.scale.set(width / base.x, height / base.y, depth / base.z);
 }
 
 function applyDimensionsFromInputs() {
   const object = state.selected;
+  if (!object || isUniformObject(object)) return;
 
-  if (!object || isUniformObject(object)) {
-    return;
-  }
+  const current = getEditableDimensions(object);
+  const width = clamp(numberOrFallback(widthInput.value, current.x), 0.1, 200);
+  const height = clamp(numberOrFallback(heightInput.value, current.y), 0.02, 100);
+  const depth = clamp(numberOrFallback(depthInput.value, current.z), 0.1, 200);
 
-  const current =
-    getEditableDimensions(object);
-
-  const width = clamp(
-    numberOrFallback(widthInput.value, current.x),
-    0.1,
-    200
-  );
-
-  const height = clamp(
-    numberOrFallback(heightInput.value, current.y),
-    0.02,
-    100
-  );
-
-  const depth = clamp(
-    numberOrFallback(depthInput.value, current.z),
-    0.1,
-    200
-  );
-
-  setEditableDimensions(
-    object,
-    width,
-    height,
-    depth
-  );
-
+  setEditableDimensions(object, width, height, depth);
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
 
 function applyPositionFromInputs() {
   const object = state.selected;
+  if (!object) return;
 
-  if (!object) {
-    return;
-  }
-
-  object.position.x = clamp(
-    numberOrFallback(positionXInput.value, object.position.x),
-    -250,
-    250
-  );
-
-  object.position.z = clamp(
-    numberOrFallback(positionZInput.value, object.position.z),
-    -250,
-    250
-  );
-
+  object.position.x = clamp(numberOrFallback(positionXInput.value, object.position.x), -250, 250);
+  object.position.z = clamp(numberOrFallback(positionZInput.value, object.position.z), -250, 250);
   object.position.y = isBuilding(object)
-    ? clamp(
-        numberOrFallback(positionYInput.value, object.position.y),
-        -50,
-        120
-      )
+    ? clamp(numberOrFallback(positionYInput.value, object.position.y), -50, 120)
     : 0;
 
   updateSelectionBox();
@@ -981,70 +718,39 @@ function applyPositionFromInputs() {
 
 function applyRotationFromInput() {
   const object = state.selected;
-
-  if (!object) {
-    return;
-  }
+  if (!object) return;
 
   const angle = clamp(
-    numberOrFallback(
-      rotationYInput.value,
-      degrees(object.rotation.y)
-    ),
+    numberOrFallback(rotationYInput.value, degrees(object.rotation.y)),
     -360,
     360
   );
-
   object.rotation.y = radians(angle);
-
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
 
 function applyUniformSize(percentage) {
   const object = state.selected;
+  if (!object || !isUniformObject(object)) return;
 
-  if (!object || !isUniformObject(object)) {
-    return;
-  }
-
-  const scale = clamp(
-    percentage / 100,
-    0.25,
-    3
-  );
-
+  const scale = clamp(percentage / 100, 0.25, 3);
   object.scale.setScalar(scale);
   state.lastUniformScale = scale;
-
-  uniformSizeValue.textContent =
-    `${Math.round(scale * 100)}%`;
-
+  uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
   updateSelectionBox();
 }
 
-// --------------------------------------------------
-// RAYCAST / CLIC
-// --------------------------------------------------
-
 function pointerToNdc(event) {
-  const rect =
-    renderer.domElement.getBoundingClientRect();
-
-  pointer.x =
-    ((event.clientX - rect.left) / rect.width) * 2 - 1;
-
-  pointer.y =
-    -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 }
 
 function editorRootFromHit(object) {
   let current = object;
-
   while (current) {
-    if (state.objects.includes(current)) {
-      return current;
-    }
+    if (state.objects.includes(current)) return current;
 
     if (
       current.userData?.editorRoot &&
@@ -1055,42 +761,38 @@ function editorRootFromHit(object) {
 
     current = current.parent;
   }
-
   return null;
 }
 
 function pickObject(event) {
-  if (transformControls.axis) {
-    return;
-  }
+  if (transformControls.axis) return;
 
   pointerToNdc(event);
   raycaster.setFromCamera(pointer, camera);
 
-  const intersections =
-    raycaster.intersectObjects(state.objects, true);
-
+  const intersections = raycaster.intersectObjects(state.objects, true);
   for (const intersection of intersections) {
-    const root =
-      editorRootFromHit(intersection.object);
-
+    const root = editorRootFromHit(intersection.object);
     if (root) {
       selectObject(root);
       return;
     }
   }
-
   deselectObject();
 }
 
-// --------------------------------------------------
-// VISTA
-// --------------------------------------------------
+function setActiveViewButton(mode) {
+  state.viewMode = mode;
+  perspectiveViewButton.classList.toggle("active", mode === "perspective");
+  topViewButton.classList.toggle("active", mode === "top");
+}
 
-function resetView() {
+function setPerspectiveView() {
   camera.position.copy(INITIAL_CAMERA);
   mapControls.target.copy(INITIAL_TARGET);
+  camera.lookAt(mapControls.target);
   mapControls.update();
+  setActiveViewButton("perspective");
 }
 
 function setTopView() {
@@ -1098,78 +800,55 @@ function setTopView() {
   mapControls.target.set(0, 0, 0);
   camera.lookAt(mapControls.target);
   mapControls.update();
+  setActiveViewButton("top");
+}
+
+function resetView() {
+  if (state.viewMode === "top") {
+    setTopView();
+  } else {
+    setPerspectiveView();
+  }
 }
 
 function setGridOpacity(value) {
   state.gridOpacity = value;
+  const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
+  for (const material of materials) material.opacity = value;
+}
 
-  const materials =
-    Array.isArray(grid.material)
-      ? grid.material
-      : [grid.material];
-
-  for (const material of materials) {
-    material.opacity = value;
-  }
+function setGroundOpacity(value) {
+  state.groundOpacity = value;
+  ground.material.opacity = value;
 }
 
 function setGridVisible(visible) {
   state.gridVisible = visible;
   grid.visible = visible;
-
-  gridToggle.setAttribute(
-    "aria-checked",
-    String(visible)
-  );
+  gridToggle.setAttribute("aria-checked", String(visible));
 }
 
-// --------------------------------------------------
-// EVENTOS
-// --------------------------------------------------
-
 function installEvents() {
-  resizeObserver =
-    new ResizeObserver(resizeViewport);
-
+  resizeObserver = new ResizeObserver(resizeViewport);
   resizeObserver.observe(viewport);
 
-  renderer.domElement.addEventListener(
-    "pointerdown",
-    (event) => {
-      state.pointerDown = {
-        x: event.clientX,
-        y: event.clientY,
-      };
-    }
-  );
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    state.pointerDown = { x: event.clientX, y: event.clientY };
+  });
 
-  renderer.domElement.addEventListener(
-    "pointerup",
-    (event) => {
-      if (
-        !state.pointerDown ||
-        transformControls.dragging
-      ) {
-        state.pointerDown = null;
-        return;
-      }
-
-      const dx =
-        event.clientX - state.pointerDown.x;
-
-      const dy =
-        event.clientY - state.pointerDown.y;
-
-      const moved =
-        Math.hypot(dx, dy);
-
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    if (!state.pointerDown || transformControls.dragging) {
       state.pointerDown = null;
-
-      if (moved <= 5) {
-        pickObject(event);
-      }
+      return;
     }
-  );
+
+    const dx = event.clientX - state.pointerDown.x;
+    const dy = event.clientY - state.pointerDown.y;
+    const moved = Math.hypot(dx, dy);
+    state.pointerDown = null;
+
+    if (moved <= 5) pickObject(event);
+  });
 
   for (const button of libraryButtons) {
     button.addEventListener("click", () => {
@@ -1178,22 +857,13 @@ function installEvents() {
   }
 
   for (const button of modeButtons) {
-    button.addEventListener("click", () => {
-      setTransformMode(button.dataset.mode);
-    });
+    button.addEventListener("click", () => setTransformMode(button.dataset.mode));
   }
 
   objectNameInput.addEventListener("input", () => {
-    if (!state.selected) {
-      return;
-    }
-
-    const value =
-      objectNameInput.value.trim();
-
-    if (!value) {
-      return;
-    }
+    if (!state.selected) return;
+    const value = objectNameInput.value.trim();
+    if (!value) return;
 
     state.selected.name = value;
     propertiesTitle.textContent = value;
@@ -1201,181 +871,84 @@ function installEvents() {
     refreshSceneList();
   });
 
-  for (const input of [
-    widthInput,
-    heightInput,
-    depthInput,
-  ]) {
-    input.addEventListener(
-      "change",
-      applyDimensionsFromInputs
-    );
+  for (const input of [widthInput, heightInput, depthInput]) {
+    input.addEventListener("change", applyDimensionsFromInputs);
   }
 
-  for (const input of [
-    positionXInput,
-    positionYInput,
-    positionZInput,
-  ]) {
-    input.addEventListener(
-      "change",
-      applyPositionFromInputs
-    );
+  for (const input of [positionXInput, positionYInput, positionZInput]) {
+    input.addEventListener("change", applyPositionFromInputs);
   }
 
-  rotationYInput.addEventListener(
-    "change",
-    applyRotationFromInput
-  );
+  rotationYInput.addEventListener("change", applyRotationFromInput);
 
-  uniformSizeInput.addEventListener(
-    "input",
-    (event) => {
-      applyUniformSize(
-        Number(event.target.value)
-      );
+  uniformSizeInput.addEventListener("input", (event) => {
+    applyUniformSize(Number(event.target.value));
+  });
+
+  duplicateButton.addEventListener("click", duplicateSelectedObject);
+  deleteButton.addEventListener("click", deleteSelectedObject);
+
+  perspectiveViewButton.addEventListener("click", setPerspectiveView);
+  topViewButton.addEventListener("click", setTopView);
+  resetViewButton.addEventListener("click", resetView);
+
+  gridOpacityInput.addEventListener("input", (event) => {
+    const percentage = Number(event.target.value);
+    setGridOpacity(percentage / 100);
+    gridOpacityValue.textContent = `${percentage}%`;
+  });
+
+  groundOpacityInput.addEventListener("input", (event) => {
+    const percentage = Number(event.target.value);
+    setGroundOpacity(percentage / 100);
+    groundOpacityValue.textContent = `${percentage}%`;
+  });
+
+  gridToggle.addEventListener("click", () => {
+    setGridVisible(!state.gridVisible);
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (isEditingField()) return;
+    const key = event.key.toLowerCase();
+
+    if (key === "w") setTransformMode("translate");
+    if (key === "e") setTransformMode("rotate");
+    if (key === "r") setTransformMode("scale");
+    if (key === "escape") deselectObject();
+
+    if ((event.key === "Delete" || event.key === "Backspace") && state.selected) {
+      event.preventDefault();
+      deleteSelectedObject();
     }
-  );
 
-  duplicateButton.addEventListener(
-    "click",
-    duplicateSelectedObject
-  );
-
-  deleteButton.addEventListener(
-    "click",
-    deleteSelectedObject
-  );
-
-  gridOpacityInput.addEventListener(
-    "input",
-    (event) => {
-      const percentage =
-        Number(event.target.value);
-
-      setGridOpacity(percentage / 100);
-
-      gridOpacityValue.textContent =
-        `${percentage}%`;
+    if ((event.ctrlKey || event.metaKey) && key === "d" && state.selected) {
+      event.preventDefault();
+      duplicateSelectedObject();
     }
-  );
+  });
 
-  gridToggle.addEventListener(
-    "click",
-    () => {
-      setGridVisible(!state.gridVisible);
-    }
-  );
+  document.addEventListener("visibilitychange", () => {
+    isPageVisible = !document.hidden;
+    if (isPageVisible && !animationFrame) startAnimation();
+  });
 
-  resetViewButton.addEventListener(
-    "click",
-    resetView
-  );
-
-  topViewButton.addEventListener(
-    "click",
-    setTopView
-  );
-
-  window.addEventListener(
-    "keydown",
-    (event) => {
-      if (isEditingField()) {
-        return;
-      }
-
-      const key =
-        event.key.toLowerCase();
-
-      if (key === "w") {
-        setTransformMode("translate");
-      }
-
-      if (key === "e") {
-        setTransformMode("rotate");
-      }
-
-      if (key === "r") {
-        setTransformMode("scale");
-      }
-
-      if (key === "escape") {
-        deselectObject();
-      }
-
-      if (
-        (event.key === "Delete" ||
-          event.key === "Backspace") &&
-        state.selected
-      ) {
-        event.preventDefault();
-        deleteSelectedObject();
-      }
-
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        key === "d" &&
-        state.selected
-      ) {
-        event.preventDefault();
-        duplicateSelectedObject();
-      }
-    }
-  );
-
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      isPageVisible =
-        !document.hidden;
-
-      if (
-        isPageVisible &&
-        !animationFrame
-      ) {
-        startAnimation();
-      }
-    }
-  );
-
-  window.addEventListener(
-    "pagehide",
-    cleanup,
-    { once: true }
-  );
+  window.addEventListener("pagehide", cleanup, { once: true });
 }
 
-// --------------------------------------------------
-// RENDER
-// --------------------------------------------------
-
 function resizeViewport() {
-  if (!renderer || !camera || !viewport) {
-    return;
-  }
+  if (!renderer || !camera || !viewport) return;
 
-  const width =
-    Math.max(1, viewport.clientWidth);
+  const width = Math.max(1, viewport.clientWidth);
+  const height = Math.max(1, viewport.clientHeight);
 
-  const height =
-    Math.max(1, viewport.clientHeight);
-
-  renderer.setSize(
-    width,
-    height,
-    false
-  );
-
-  camera.aspect =
-    width / height;
-
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
 }
 
 function startAnimation() {
-  if (animationFrame) {
-    return;
-  }
+  if (animationFrame) return;
 
   const loop = () => {
     if (!isPageVisible) {
@@ -1383,17 +956,13 @@ function startAnimation() {
       return;
     }
 
-    animationFrame =
-      requestAnimationFrame(loop);
-
+    animationFrame = requestAnimationFrame(loop);
     mapControls.update();
     selectionBox?.update();
-
     renderer.render(scene, camera);
   };
 
-  animationFrame =
-    requestAnimationFrame(loop);
+  animationFrame = requestAnimationFrame(loop);
 }
 
 function cleanup() {
@@ -1410,16 +979,9 @@ function cleanup() {
     if (isBuilding(object)) {
       object.traverse((child) => {
         child.geometry?.dispose?.();
-
         if (child.material) {
-          const materials =
-            Array.isArray(child.material)
-              ? child.material
-              : [child.material];
-
-          for (const material of materials) {
-            material.dispose?.();
-          }
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          for (const material of materials) material.dispose?.();
         }
       });
     }
@@ -1435,37 +997,24 @@ function cleanup() {
         ? [grid.material]
         : [];
 
-  for (const material of gridMaterials) {
-    material.dispose?.();
-  }
+  for (const material of gridMaterials) material.dispose?.();
 
   disposePropLibrary();
   renderer?.dispose();
 }
 
-// --------------------------------------------------
-// INICIO
-// --------------------------------------------------
-
 try {
-  if (!viewport) {
-    throw new Error(
-      "No se encontró el área de trabajo 3D."
-    );
-  }
+  if (!viewport) throw new Error("No se encontró el área de trabajo 3D.");
 
   if (!canUseWebGL()) {
     throw new Error(
-      "Este navegador no pudo iniciar WebGL. Prueba con una versión reciente de Chrome, Edge, Firefox o Safari."
+      "Este navegador no pudo iniciar WebGL. Usa una versión reciente de Safari, Chrome, Edge o Firefox."
     );
   }
 
   createScene();
 } catch (error) {
-  console.error(
-    "[Resort Map Builder]",
-    error
-  );
+  console.error("[Resort Map Builder]", error);
 
   showFatalError(
     error instanceof Error
