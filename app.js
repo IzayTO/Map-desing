@@ -1120,7 +1120,8 @@ function updateCompass() {
 }
 
 function updateOverlayWidgets() {
-  updateAxisLabels();
+  // Parte 8 dibuja X/Y/Z dentro de la escena Three.js.
+  // Evitamos recalcular la capa HTML antigua en cada frame.
   updateCompass();
 }
 

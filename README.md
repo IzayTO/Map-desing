@@ -1,61 +1,37 @@
-# Resort Map Builder · Parte 6.7.2
+# Resort Map Builder · Parte 8
 
-Esta versión parte directamente de la 6.7.1 corregida y conserva todas las funciones anteriores.
+Esta carpeta parte de la versión 6.7.2 del repositorio y añade dos bloques nuevos sin reescribir el núcleo estable:
 
-## Correcciones principales
+- **Parte 7 · Lugares importantes**: marcadores ligeros para Edificio 65, Lobby, Piscina de olas, Restaurante, Spa, Recepción, etc.
+- **Parte 8 · Editor de red de rutas**: nodos y conexiones manuales para construir la red por donde más adelante se calcularán recorridos.
 
-### Contornos persistentes
+## Importante
 
-El contorno ahora se genera como una capa hija de cada mesh compatible. Eso hace que herede la misma posición, rotación y escala de la geometría.
+Todavía **no hay pathfinding**. No se implementa Dijkstra ni A*. La red únicamente se dibuja, edita y guarda.
 
-Ya no se reconstruye el contorno durante cada frame de mover / rotar / escalar. Esto corrige el problema donde el objeto rotaba pero el contorno quedaba desfasado o desaparecía al confirmar la transformación.
+## Coordenadas X / Y / Z
 
-Se mantienen sin contorno por diseño:
+La Parte 8 oculta la capa HTML anterior y coloca X/Y/Z como sprites dentro de la misma escena Three.js del gizmo. Así las letras ya no dependen del desplazamiento del canvas causado por paneles laterales y se comportan igual en móvil y escritorio.
 
-- vegetación,
-- agua,
-- postes / lámparas,
-- fuentes,
-- puente normal y puente arqueado.
+## Guardado
 
-Sí pueden usar contorno, entre otros:
+El archivo `resort.json` mantiene el schema principal de la versión 6.7.2 y añade un bloque opcional:
 
-- edificios,
-- bloques y formas geométricas,
-- caminos,
-- puertas y ventanas,
-- columnas y pilares,
-- muros y barandales,
-- escaleras.
+```json
+"part8": {
+  "version": 1,
+  "places": [],
+  "routeNetwork": {
+    "nodes": [],
+    "edges": []
+  }
+}
+```
 
-Cada objeto compatible conserva:
+Los proyectos antiguos siguen cargando: si no existe `part8`, se inicia con lugares y red vacíos.
 
-- Contorno ON / OFF.
-- Nitidez / intensidad del contorno.
+## Instalación
 
-### Etiquetas X / Y / Z
+Copia **el contenido de esta carpeta PARTE_8** a la raíz del repositorio GitHub Pages, reemplazando los archivos con el mismo nombre y añadiendo `part8-preload.js`, `part8.js` y `part8.css`.
 
-Las letras dejaron de colocarse como burbujas flotantes alrededor del volumen del objeto.
-Ahora se posicionan en pantalla siguiendo la dirección real de las líneas del gizmo de TransformControls.
-
-- Mover: ejes globales.
-- Escalar: ejes locales del objeto.
-- Rotar: solo se muestra la etiqueta del eje visible.
-
-### Optimización
-
-Los EdgesGeometry ya no se destruyen y recrean continuamente durante una transformación. Solo se reconstruyen cuando cambia realmente la geometría, por ejemplo al modificar una escalera paramétrica.
-
-## Conservado
-
-- Undo / Redo.
-- Inputs numéricos y sliders X / Y / Z.
-- Mini brújula.
-- Activar / desactivar etiquetas de ejes.
-- Ctrl + rotar = snap cada 45 grados.
-- Escalado de un solo lado.
-- Imán de cuadrícula, objetos y suelo.
-- Imagen guía y sus controles.
-- Guardar / cargar resort.json.
-- Compatibilidad con archivos anteriores.
-- Gestos móviles y controles de PC.
+La carpeta `BACKUP_6.7.2` del ZIP es únicamente respaldo y no debe mezclarse con la raíz del sitio.

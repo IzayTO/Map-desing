@@ -6,12 +6,13 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 6.7.2 · contornos persistentes, ejes alineados y herramientas preservadas."
+    content="Resort Map Builder · Parte 8 · lugares importantes y editor de red de rutas."
   />
-  <title>Resort Map Builder · Parte 6.7.2</title>
+  <title>Resort Map Builder · Parte 8</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
   <link rel="stylesheet" href="./style.css?v=6.7.2" />
+  <link rel="stylesheet" href="./part8.css?v=8.0" />
 
   <script type="importmap">
   {
@@ -695,12 +696,14 @@
     </main>
 
     <footer class="footer">
-      <span>Parte 6.7.2 · Contornos persistentes + ejes alineados</span>
+      <span>Parte 8 · Lugares + red de rutas</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
-  <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
+  <!-- Parte 8 usa un puente ligero sin reescribir el núcleo 6.7.2 -->
+  <script type="module" src="./part8-preload.js?v=8.0"></script>
   <script type="module" src="./app.js?v=6.7.2"></script>
+  <script type="module" src="./part8.js?v=8.0"></script>
 </body>
 </html>

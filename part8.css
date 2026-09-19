@@ -1,0 +1,188 @@
+/* Parte 8: capa ligera para lugares y red de rutas. */
+.axis-label-layer.part8-axis-replaced{
+  display:none!important;
+}
+
+.part8-launcher{
+  position:absolute;
+  left:14px;
+  bottom:88px;
+  z-index:36;
+  min-height:42px;
+  padding:0 14px;
+  border:1px solid rgba(30,30,30,.12);
+  border-radius:14px;
+  background:rgba(255,255,255,.92);
+  -webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);
+  box-shadow:0 12px 30px rgba(30,30,30,.10);
+  font:700 .72rem/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:#2d2d2d;
+}
+
+.part8-panel{
+  position:absolute;
+  left:14px;
+  bottom:140px;
+  z-index:37;
+  width:min(340px,calc(100% - 28px));
+  max-height:min(68%,620px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid rgba(30,30,30,.10);
+  border-radius:18px;
+  background:rgba(250,250,247,.96);
+  -webkit-backdrop-filter:blur(22px);
+  backdrop-filter:blur(22px);
+  box-shadow:0 20px 50px rgba(30,30,30,.13);
+  padding:12px;
+  color:#333;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+.part8-hidden{display:none!important}
+
+.part8-panel-head,
+.part8-row,
+.part8-tabs,
+.part8-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.part8-panel-head{
+  justify-content:space-between;
+  position:sticky;
+  top:-12px;
+  z-index:2;
+  margin:-12px -12px 10px;
+  padding:12px;
+  background:rgba(250,250,247,.97);
+  border-bottom:1px solid rgba(30,30,30,.07);
+}
+
+.part8-panel-head strong{font-size:.78rem}
+.part8-panel-head small{display:block;margin-top:2px;color:#8a8a8a;font-size:.58rem}
+
+.part8-icon-button,
+.part8-button,
+.part8-tab{
+  border:1px solid rgba(30,30,30,.10);
+  background:rgba(255,255,255,.72);
+  color:#3b3b3b;
+  border-radius:10px;
+  min-height:36px;
+  padding:0 10px;
+  font:650 .62rem/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+.part8-icon-button{width:36px;padding:0;font-size:1rem}
+.part8-button.primary,
+.part8-tab.active{
+  background:#222;
+  color:white;
+  border-color:#222;
+}
+.part8-button.danger{color:#a84e4e;background:rgba(168,78,78,.07)}
+.part8-button:disabled{opacity:.4}
+.part8-tabs{margin-bottom:10px}
+.part8-tab{flex:1}
+.part8-actions{flex-wrap:wrap;margin:8px 0}
+.part8-actions .part8-button{flex:1 1 auto}
+
+.part8-section{
+  border-top:1px solid rgba(30,30,30,.08);
+  padding-top:10px;
+  margin-top:10px;
+}
+.part8-section-title{
+  display:block;
+  margin-bottom:6px;
+  color:#8a8a8a;
+  font-size:.54rem;
+  font-weight:750;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.part8-field{
+  display:grid;
+  gap:4px;
+  margin:7px 0;
+  color:#777;
+  font-size:.56rem;
+  font-weight:650;
+}
+.part8-field input,
+.part8-field select{
+  width:100%;
+  min-height:38px;
+  border:1px solid rgba(30,30,30,.11);
+  border-radius:10px;
+  background:rgba(255,255,255,.82);
+  padding:0 9px;
+  color:#333;
+  font-size:.66rem;
+}
+
+.part8-list{
+  display:grid;
+  gap:5px;
+  max-height:180px;
+  overflow:auto;
+}
+.part8-list-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  width:100%;
+  min-height:38px;
+  padding:6px 9px;
+  border:1px solid rgba(30,30,30,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.58);
+  color:#444;
+  text-align:left;
+  font-size:.62rem;
+}
+.part8-list-item.active{border-color:#222;background:rgba(34,34,34,.07)}
+.part8-list-item small{color:#999}
+.part8-connection-list{display:grid;gap:5px}
+.part8-connection{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.6rem}
+.part8-mode-note{
+  margin:8px 0 0;
+  padding:8px 9px;
+  border-radius:10px;
+  background:rgba(55,110,90,.08);
+  color:#4f7568;
+  font-size:.58rem;
+  line-height:1.35;
+}
+.part8-counts{color:#888;font-size:.57rem}
+
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  .part8-launcher{
+    left:calc(var(--left-rail,250px) + var(--rail-gap,14px) + 18px);
+    bottom:18px;
+  }
+  .part8-panel{
+    left:calc(var(--left-rail,250px) + var(--rail-gap,14px) + 18px);
+    bottom:72px;
+  }
+}
+
+@media (max-width:760px){
+  .part8-launcher{
+    left:16px;
+    bottom:130px;
+    min-height:40px;
+  }
+  .part8-panel{
+    left:12px;
+    bottom:180px;
+    width:calc(100% - 24px);
+    max-height:58%;
+  }
+}
