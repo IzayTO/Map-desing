@@ -1,24 +1,27 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7.2";
-import { setupMobilePanels } from "./ui.js?v=6.7.2";
-import { createPlacementController } from "./placement.js?v=6.7.2";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.7.2";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=8.0.0";
+import { setupMobilePanels } from "./ui.js?v=8.0.0";
+import { createPlacementController } from "./placement.js?v=8.0.0";
+import { setupDesktopControls } from "./desktop-controls.js?v=8.0.0";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.7.2";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.7.2";
+} from "./snap.js?v=8.0.0";
+import { setupOneSidedScale } from "./scale-anchor.js?v=8.0.0";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.7.2";
+} from "./project-io.js?v=8.0.0";
+import { createAxisOverlay } from "./axis-overlay.js?v=8.0.0";
+import { createPlacesManager } from "./places.js?v=8.0.0";
+import { createRouteEditor } from "./route-editor.js?v=8.0.0";
 
 window.__RMB_READY__ = false;
 
@@ -114,6 +117,15 @@ const rotationYInput = document.querySelector("#rotationY");
 const duplicateButton = document.querySelector("#duplicateObject");
 const deleteButton = document.querySelector("#deleteObject");
 const modeButtons = [...document.querySelectorAll("[data-mode]")];
+const editSectionButtons = [...document.querySelectorAll("[data-edit-section]")];
+const objectEditorSection = document.querySelector("#objectEditorSection");
+const placesEditorSection = document.querySelector("#placesEditorSection");
+const routesEditorSection = document.querySelector("#routesEditorSection");
+const mobileUndoButton = document.querySelector("#mobileUndo");
+const mobileRedoButton = document.querySelector("#mobileRedo");
+const specialModeToolbar = document.querySelector("#specialModeToolbar");
+const specialModeText = document.querySelector("#specialModeText");
+const specialModeCancelButton = document.querySelector("#specialModeCancel");
 
 
 let positionXNumberInput = null;
@@ -127,10 +139,6 @@ let objectOutlineStrengthInput = null;
 let objectOutlineStrengthValue = null;
 let axisLabelsToggle = null;
 let compassToggle = null;
-let axisLabelsLayer = null;
-let axisLabelX = null;
-let axisLabelY = null;
-let axisLabelZ = null;
 let compassCanvas = null;
 let compassCtx = null;
 
@@ -186,6 +194,7 @@ const state = {
   historyMuted: false,
   pendingTransformChange: false,
   ctrlRotationSnap: false,
+  editSection: "objects",
 };
 
 let scene;
@@ -203,6 +212,10 @@ let mobilePanels;
 let placementController;
 let desktopControls;
 let oneSidedScaleController;
+let axisOverlay;
+let placesManager;
+let routeEditor;
+let overlayDirty = true;
 let resizeObserver;
 let animationFrame = 0;
 let isPageVisible = true;
@@ -813,6 +826,8 @@ function injectHistoryToolbar() {
 
   historyUndoButton?.addEventListener("click", undoHistory);
   historyRedoButton?.addEventListener("click", redoHistory);
+  mobileUndoButton?.addEventListener("click", undoHistory);
+  mobileRedoButton?.addEventListener("click", redoHistory);
   updateHistoryUi();
 }
 
@@ -909,18 +924,6 @@ function installEnhancedUi() {
   injectOutlineControls();
   injectViewExtras();
 
-  if (!axisLabelsLayer) {
-    axisLabelsLayer = document.createElement("div");
-    axisLabelsLayer.className = "axis-label-layer hidden";
-    axisLabelsLayer.innerHTML = `
-      <span class="axis-chip axis-x">X</span>
-      <span class="axis-chip axis-y">Y</span>
-      <span class="axis-chip axis-z">Z</span>
-    `;
-    workspace.appendChild(axisLabelsLayer);
-    [axisLabelX, axisLabelY, axisLabelZ] = axisLabelsLayer.querySelectorAll(".axis-chip");
-  }
-
   if (!compassCanvas) {
     compassCanvas = document.createElement("canvas");
     compassCanvas.className = "mini-compass";
@@ -982,102 +985,13 @@ function updateViewExtrasUi() {
   }
 }
 
-function getTransformOriginWorld(object) {
-  const origin = new THREE.Vector3();
-  object.getWorldPosition(origin);
-  return origin;
-}
-
-function getAxisWorldDirection(axisName, object) {
-  const axis = new THREE.Vector3(
-    axisName === "X" ? 1 : 0,
-    axisName === "Y" ? 1 : 0,
-    axisName === "Z" ? 1 : 0
-  );
-
-  // TransformControls usa espacio local únicamente al escalar.
-  // Mover y rotar están configurados en world space.
-  if (state.transformMode === "scale") {
-    const worldQuaternion = new THREE.Quaternion();
-    object.getWorldQuaternion(worldQuaternion);
-    axis.applyQuaternion(worldQuaternion);
-  }
-
-  return axis.normalize();
-}
-
-function placeAxisLabel(node, axisName, centerWorld, object, visible) {
-  if (!node || !visible) {
-    node?.classList.add("hidden");
-    return;
-  }
-
-  const centerScreen = projectWorldToViewport(centerWorld);
-  const axisWorld = getAxisWorldDirection(axisName, object);
-  const testScreen = projectWorldToViewport(
-    centerWorld.clone().add(axisWorld)
-  );
-
-  let dx = testScreen.x - centerScreen.x;
-  let dy = testScreen.y - centerScreen.y;
-  const length = Math.hypot(dx, dy);
-
-  // Si un eje apunta casi directamente hacia la cámara, su línea proyectada
-  // no tiene una dirección visual útil. Ocultamos solo esa letra.
-  if (length < 3) {
-    node.classList.add("hidden");
-    return;
-  }
-
-  dx /= length;
-  dy /= length;
-
-  const pixelDistance = state.transformMode === "rotate" ? 48 : 54;
-  const x = centerScreen.x + dx * pixelDistance;
-  const y = centerScreen.y + dy * pixelDistance;
-
-  node.classList.remove("hidden");
-  node.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+function markOverlayDirty() {
+  overlayDirty = true;
+  axisOverlay?.markDirty();
 }
 
 function updateAxisLabels() {
-  if (!axisLabelsLayer || !renderer || !camera) return;
-  const object = state.selected;
-
-  if (
-    !state.showAxisLabels ||
-    !object ||
-    isLocked(object) ||
-    transformControls.object !== object
-  ) {
-    axisLabelsLayer.classList.add("hidden");
-    return;
-  }
-
-  const centerWorld = getTransformOriginWorld(object);
-  axisLabelsLayer.classList.remove("hidden");
-
-  placeAxisLabel(
-    axisLabelX,
-    "X",
-    centerWorld,
-    object,
-    transformControls.showX !== false
-  );
-  placeAxisLabel(
-    axisLabelY,
-    "Y",
-    centerWorld,
-    object,
-    transformControls.showY !== false
-  );
-  placeAxisLabel(
-    axisLabelZ,
-    "Z",
-    centerWorld,
-    object,
-    transformControls.showZ !== false
-  );
+  markOverlayDirty();
 }
 
 function drawCompassAxis(label, color, vector) {
@@ -1120,17 +1034,21 @@ function updateCompass() {
 }
 
 function updateOverlayWidgets() {
-  // Parte 8 dibuja X/Y/Z dentro de la escena Three.js.
-  // Evitamos recalcular la capa HTML antigua en cada frame.
+  if (!overlayDirty) return;
+  overlayDirty = false;
+  axisOverlay?.update();
   updateCompass();
 }
 
 function captureHistorySnapshot() {
   return {
     objects: state.objects.map(serializeEditorObject),
+    places: placesManager?.serialize?.() || [],
+    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [] },
     nextBuildingNumber: state.nextBuildingNumber,
     nextPropNumbers: { ...state.nextPropNumbers },
     selectedId: state.selected?.userData?.id || null,
+    editSection: state.editSection,
   };
 }
 
@@ -1139,12 +1057,12 @@ function snapshotsEqual(a, b) {
 }
 
 function updateHistoryUi() {
-  if (historyUndoButton) {
-    historyUndoButton.disabled = state.historyIndex <= 0;
-  }
-  if (historyRedoButton) {
-    historyRedoButton.disabled = state.historyIndex >= state.history.length - 1;
-  }
+  const undoDisabled = state.historyIndex <= 0;
+  const redoDisabled = state.historyIndex >= state.history.length - 1;
+  if (historyUndoButton) historyUndoButton.disabled = undoDisabled;
+  if (historyRedoButton) historyRedoButton.disabled = redoDisabled;
+  if (mobileUndoButton) mobileUndoButton.disabled = undoDisabled;
+  if (mobileRedoButton) mobileRedoButton.disabled = redoDisabled;
 }
 
 function recordHistory(_label = "") {
@@ -1171,18 +1089,26 @@ function applyHistorySnapshot(snapshot) {
   if (!snapshot) return;
   state.historyMuted = true;
   clearEditorObjects();
-  for (const record of snapshot.objects) {
+  for (const record of snapshot.objects || []) {
     restoreProjectObject(record);
   }
+  placesManager?.restore?.(snapshot.places || []);
+  routeEditor?.restore?.(snapshot.routeNetwork || { nodes: [], edges: [] });
   state.nextBuildingNumber = snapshot.nextBuildingNumber || 1;
   state.nextPropNumbers = { ...(snapshot.nextPropNumbers || {}) };
   const selected = state.objects.find((item) => item.userData.id === snapshot.selectedId);
   if (selected) {
+    state.editSection = "objects";
     selectObject(selected);
   } else {
     deselectObject();
+    state.editSection = ["objects", "places", "routes"].includes(snapshot.editSection)
+      ? snapshot.editSection
+      : "objects";
   }
+  updateEditorSectionUi();
   refreshOutlineStates();
+  markOverlayDirty();
   state.historyMuted = false;
   updateHistoryUi();
 }
@@ -1197,6 +1123,92 @@ function redoHistory() {
   if (state.historyIndex >= state.history.length - 1) return;
   state.historyIndex += 1;
   applyHistorySnapshot(state.history[state.historyIndex]);
+}
+
+function updateSpecialModeToolbar(section, mode = "idle", message = "") {
+  if (!specialModeToolbar) return;
+  const visible = state.editSection === section && mode !== "idle";
+  specialModeToolbar.classList.toggle("hidden", !visible);
+  if (visible && specialModeText) {
+    specialModeText.textContent = message || (section === "places" ? "Editando lugar" : "Editando rutas");
+  }
+}
+
+function updateEditorSectionUi() {
+  const section = state.editSection;
+
+  for (const button of editSectionButtons) {
+    const active = button.dataset.editSection === section;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
+
+  objectEditorSection?.classList.toggle("hidden", section !== "objects");
+  placesEditorSection?.classList.toggle("hidden", section !== "places");
+  routesEditorSection?.classList.toggle("hidden", section !== "routes");
+
+  placesManager?.setActive?.(section === "places");
+  routeEditor?.setActive?.(section === "routes");
+
+  if (section === "objects") {
+    specialModeToolbar?.classList.add("hidden");
+    updatePropertiesFromSelection();
+    return;
+  }
+
+  selectionToolbar?.classList.add("hidden");
+  hideAlignmentGuides();
+  axisOverlay?.hide?.();
+
+  if (section === "places") {
+    if (propertiesKind) propertiesKind.textContent = "LUGARES";
+    if (propertiesTitle) propertiesTitle.textContent = "Lugares importantes";
+    if (selectionStatus) selectionStatus.textContent = "Editando lugares importantes";
+  } else {
+    if (propertiesKind) propertiesKind.textContent = "RUTAS";
+    if (propertiesTitle) propertiesTitle.textContent = "Editor de rutas";
+    if (selectionStatus) selectionStatus.textContent = "Editando red de rutas";
+  }
+}
+
+function setEditSection(section) {
+  if (!["objects", "places", "routes"].includes(section)) return;
+  if (state.editSection === section) {
+    updateEditorSectionUi();
+    return;
+  }
+
+  if (section !== "objects") {
+    if (placementController?.isActive()) {
+      placementController.finish();
+      renderer?.domElement?.classList.remove("placement-active");
+    }
+    if (state.selected) deselectObject();
+  }
+
+  state.editSection = section;
+  updateEditorSectionUi();
+  markOverlayDirty();
+}
+
+function snapSpecialPoint(point) {
+  if (!point) return point;
+  const snapped = magnetizePointXZ(point.x, point.z);
+  const result = point.clone ? point.clone() : new THREE.Vector3(point.x, 0, point.z);
+  result.x = clamp(snapped.x, -70, 70);
+  result.y = 0;
+  result.z = clamp(snapped.z, -70, 70);
+  return result;
+}
+
+function handleSpecialEditorTap(event) {
+  if (state.editSection === "places") {
+    return placesManager?.handleTap?.(event, groundPointFromEvent(event)) ?? true;
+  }
+  if (state.editSection === "routes") {
+    return routeEditor?.handleTap?.(event, groundPointFromEvent(event)) ?? true;
+  }
+  return false;
 }
 
 function magnetizePointXZ(x, z) {
@@ -1340,6 +1352,8 @@ function serializeProject() {
       position: camera.position.toArray(),
       target: mapControls.target.toArray(),
     },
+    places: placesManager?.serialize?.() || [],
+    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [] },
   });
 }
 
@@ -1556,6 +1570,7 @@ function restoreProjectSettings(project) {
     project.settings.viewMode
   );
   updateViewExtrasUi();
+  markOverlayDirty();
   updateOverlayWidgets();
 }
 
@@ -1575,6 +1590,10 @@ function restoreProject(project) {
   }
 
   restoreProjectSettings(project);
+  placesManager?.restore?.(project.places || []);
+  routeEditor?.restore?.(project.routeNetwork || { nodes: [], edges: [] });
+  state.editSection = "objects";
+  updateEditorSectionUi();
 
   if (state.objects.length > 0) {
     selectObject(
@@ -1602,7 +1621,7 @@ function saveProjectFile() {
     );
 
     setProjectMessage(
-      `resort.json guardado · ${state.objects.length} objetos.`,
+      `resort.json guardado · ${state.objects.length} objetos · ${placesManager?.serialize?.().length || 0} lugares · ${routeEditor?.serialize?.().nodes.length || 0} nodos.`,
       "success"
     );
   } catch (error) {
@@ -1637,7 +1656,7 @@ async function loadProjectFile(file) {
     restoreProject(project);
 
     setProjectMessage(
-      `Proyecto cargado · ${project.objects.length} objetos.`,
+      `Proyecto cargado · ${project.objects.length} objetos · ${project.places.length} lugares · ${project.routeNetwork.nodes.length} nodos.`,
       "success"
     );
   } catch (error) {
@@ -1690,7 +1709,8 @@ function createScene() {
     alpha: false,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const coarsePointer = window.matchMedia?.("(hover:none), (pointer:coarse)")?.matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarsePointer ? 1.6 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   viewport.appendChild(renderer.domElement);
 
@@ -1702,6 +1722,52 @@ function createScene() {
   createOriginMarker();
   createMapControls();
   createTransformControls();
+
+  axisOverlay = createAxisOverlay({
+    scene,
+    camera,
+    renderer,
+    transformControls,
+    getSelectedObject: () => state.selected,
+    getTransformMode: () => state.transformMode,
+    isEnabled: () => state.showAxisLabels && state.editSection === "objects",
+  });
+
+  placesManager = createPlacesManager({
+    scene,
+    camera,
+    renderer,
+    panel: placesEditorSection,
+    snapPoint: snapSpecialPoint,
+    onMutate: recordHistory,
+    onSelectionChange: (id) => {
+      if (state.editSection === "places" && selectionStatus) {
+        selectionStatus.textContent = id ? "Lugar seleccionado" : "Editando lugares importantes";
+      }
+    },
+    onInteractionChange: (mode, message) => {
+      updateSpecialModeToolbar("places", mode, message);
+    },
+  });
+
+  routeEditor = createRouteEditor({
+    scene,
+    camera,
+    renderer,
+    panel: routesEditorSection,
+    snapPoint: snapSpecialPoint,
+    onMutate: recordHistory,
+    onSelectionChange: (id) => {
+      if (state.editSection === "routes" && selectionStatus) {
+        selectionStatus.textContent = id ? "Nodo de ruta seleccionado" : "Editando red de rutas";
+      }
+    },
+    onInteractionChange: (mode, message) => {
+      updateSpecialModeToolbar("routes", mode, message);
+    },
+  });
+
+  updateEditorSectionUi();
 
   oneSidedScaleController =
     setupOneSidedScale({
@@ -1886,6 +1952,8 @@ function createMapControls() {
     if (camera.position.y < 0.35) {
       camera.position.y = 0.35;
     }
+
+    markOverlayDirty();
   });
 
   mapControls.update();
@@ -1900,6 +1968,7 @@ function createTransformControls() {
 
   transformControls.addEventListener("mouseDown", () => {
     mapControls.enabled = false;
+    markOverlayDirty();
     state.pendingTransformChange = false;
 
     oneSidedScaleController?.beginDrag(
@@ -1913,6 +1982,7 @@ function createTransformControls() {
 
   transformControls.addEventListener("mouseUp", () => {
     mapControls.enabled = true;
+    markOverlayDirty();
     oneSidedScaleController?.endDrag();
     if (state.pendingTransformChange) {
       if (state.selected) applyObjectOutlineStyle(state.selected, true);
@@ -1923,6 +1993,7 @@ function createTransformControls() {
 
   transformControls.addEventListener("objectChange", () => {
     oneSidedScaleController?.apply();
+    markOverlayDirty();
     applySelectionConstraints();
     state.pendingTransformChange = true;
     if (state.selected) applyObjectOutlineStyle(state.selected, true);
@@ -2028,6 +2099,8 @@ function placementTypeLabel(type) {
 function startPlacementMode(type) {
   if (!type) return;
 
+  state.editSection = "objects";
+  updateEditorSectionUi();
   state.selected = null;
   transformControls.detach();
   removeSelectionBox();
@@ -2069,7 +2142,10 @@ function selectObject(object) {
     return;
   }
 
+  state.editSection = "objects";
   state.selected = object;
+  updateEditorSectionUi();
+  markOverlayDirty();
 
   if (isLocked(object)) {
     transformControls.detach();
@@ -2091,6 +2167,7 @@ function deselectObject() {
   hideAlignmentGuides();
   state.selected = null;
   transformControls.detach();
+  markOverlayDirty();
   removeSelectionBox();
   refreshSceneList();
   updatePropertiesFromSelection();
@@ -2170,22 +2247,30 @@ function deleteSelectedObject() {
 function createSelectionBox(object) {
   selectionBox = null;
   refreshOutlineStates();
+  markOverlayDirty();
   updateOverlayWidgets();
 }
 
 function updateSelectionBox() {
   refreshOutlineStates();
+  markOverlayDirty();
   updateOverlayWidgets();
 }
 
 function removeSelectionBox() {
   selectionBox = null;
   refreshOutlineStates();
+  markOverlayDirty();
   updateOverlayWidgets();
 }
 
 function setTransformMode(mode) {
   if (!["translate", "rotate", "scale"].includes(mode)) return;
+
+  if (state.editSection !== "objects") {
+    state.editSection = "objects";
+    updateEditorSectionUi();
+  }
 
   if (placementController?.isActive()) {
     placementController.finish();
@@ -2201,7 +2286,7 @@ function setTransformMode(mode) {
   );
 
   configureTransformForSelection();
-  updateAxisLabels();
+  markOverlayDirty();
 
   for (const button of modeButtons) {
     button.classList.toggle("active", button.dataset.mode === mode);
@@ -2210,6 +2295,7 @@ function setTransformMode(mode) {
 
 function configureTransformForSelection() {
   const object = state.selected;
+  markOverlayDirty();
   transformControls.showX = true;
   transformControls.showY = true;
   transformControls.showZ = true;
@@ -2359,6 +2445,11 @@ function refreshSceneList() {
 }
 
 function updatePropertiesFromSelection() {
+  if (state.editSection !== "objects") {
+    selectionToolbar?.classList.add("hidden");
+    return;
+  }
+
   const object = state.selected;
   const hasSelection = Boolean(object);
 
@@ -2754,6 +2845,7 @@ function setPerspectiveView() {
   camera.lookAt(mapControls.target);
   mapControls.update();
   setActiveViewButton("perspective");
+  markOverlayDirty();
 }
 
 function setTopView() {
@@ -2762,6 +2854,7 @@ function setTopView() {
   camera.lookAt(mapControls.target);
   mapControls.update();
   setActiveViewButton("top");
+  markOverlayDirty();
 }
 
 function resetView() {
@@ -3015,6 +3108,12 @@ function installEvents() {
     state.pointerDown = { x: event.clientX, y: event.clientY };
   });
 
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    if (state.editSection === "places" && !mapControls.dragging) {
+      placesManager?.handleHover?.(event);
+    }
+  });
+
   renderer.domElement.addEventListener("pointerup", (event) => {
     if (!state.pointerDown || transformControls.dragging) {
       state.pointerDown = null;
@@ -3027,6 +3126,7 @@ function installEvents() {
     state.pointerDown = null;
 
     if (moved <= 5) {
+      if (handleSpecialEditorTap(event)) return;
       if (!placeCurrentType(event)) {
         pickObject(event);
       }
@@ -3035,6 +3135,7 @@ function installEvents() {
 
   for (const button of libraryButtons) {
     button.addEventListener("click", () => {
+      setEditSection("objects");
       createFromLibrary(button.dataset.create);
 
       if (mobilePanels?.isMobile()) {
@@ -3044,7 +3145,16 @@ function installEvents() {
   }
 
   for (const button of modeButtons) {
-    button.addEventListener("click", () => setTransformMode(button.dataset.mode));
+    button.addEventListener("click", () => {
+      setEditSection("objects");
+      setTransformMode(button.dataset.mode);
+    });
+  }
+
+  for (const button of editSectionButtons) {
+    button.addEventListener("click", () => {
+      setEditSection(button.dataset.editSection);
+    });
   }
 
   objectNameInput.addEventListener("input", () => {
@@ -3123,6 +3233,23 @@ function installEvents() {
   mobileResetViewButton?.addEventListener("click", () => {
     setPerspectiveView();
   });
+
+  specialModeCancelButton?.addEventListener("click", () => {
+    if (state.editSection === "places") placesManager?.cancelInteraction?.();
+    if (state.editSection === "routes") routeEditor?.cancelInteraction?.();
+  });
+
+  for (const button of [
+    document.querySelector("#placeAddButton"),
+    document.querySelector("#placeMoveButton"),
+    document.querySelector("#routeAddNodeButton"),
+    document.querySelector("#routeMoveNodeButton"),
+    document.querySelector("#routeConnectButton"),
+  ].filter(Boolean)) {
+    button.addEventListener("click", () => {
+      if (mobilePanels?.isMobile()) mobilePanels.closePanels();
+    });
+  }
 
   desktopHelpToggle?.addEventListener("click", () => {
     const hidden = desktopHelpPanel.classList.toggle("hidden");
@@ -3303,8 +3430,14 @@ function installEvents() {
     if (key === "e") setTransformMode("rotate");
     if (key === "r") setTransformMode("scale");
     if (key === "escape") {
-      if (placementController?.isActive()) {
+      if (state.editSection === "places" && placesManager?.isInteracting?.()) {
+        placesManager.cancelInteraction?.();
+      } else if (state.editSection === "routes" && routeEditor?.isInteracting?.()) {
+        routeEditor.cancelInteraction?.();
+      } else if (placementController?.isActive()) {
         placementController.finish();
+      } else if (state.editSection !== "objects") {
+        setEditSection("objects");
       } else {
         deselectObject();
       }
@@ -3349,6 +3482,7 @@ function resizeViewport() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+  markOverlayDirty();
 }
 
 function startAnimation() {
@@ -3390,6 +3524,9 @@ function cleanup() {
   resizeObserver?.disconnect();
   desktopControls?.dispose?.();
   oneSidedScaleController?.dispose?.();
+  axisOverlay?.dispose?.();
+  placesManager?.dispose?.();
+  routeEditor?.dispose?.();
   mapControls?.dispose();
   transformControls?.dispose();
 

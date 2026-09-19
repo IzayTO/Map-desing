@@ -1,6 +1,9 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 4;
+const VERSION = 5;
 const MAX_OBJECTS = 10000;
+const MAX_PLACES = 2000;
+const MAX_ROUTE_NODES = 10000;
+const MAX_ROUTE_EDGES = 30000;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -19,22 +22,120 @@ function vector3(value, fallback = [0, 0, 0]) {
   ];
 }
 
+function cleanText(value, fallback, maxLength) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return (text || fallback).slice(0, maxLength);
+}
+
+function validatePlaces(input) {
+  const source = input === undefined ? [] : input;
+  if (!Array.isArray(source)) {
+    throw new Error("La lista de lugares importantes no es válida.");
+  }
+  if (source.length > MAX_PLACES) {
+    throw new Error(`El proyecto contiene demasiados lugares (${source.length}).`);
+  }
+
+  const ids = new Set();
+  return source.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`Lugar inválido en la posición ${index + 1}.`);
+    }
+
+    let id = cleanText(item.id, `place-${index + 1}`, 120);
+    if (ids.has(id)) id = `place-${index + 1}`;
+    ids.add(id);
+
+    const position = vector3(item.position);
+    position[1] = 0;
+
+    return {
+      id,
+      name: cleanText(item.name, `Lugar ${index + 1}`, 80),
+      category: cleanText(item.category, "general", 40),
+      position,
+      locked: Boolean(item.locked),
+      visible: item.visible === undefined ? true : Boolean(item.visible),
+      routeNodeId:
+        typeof item.routeNodeId === "string" && item.routeNodeId.trim()
+          ? item.routeNodeId.trim().slice(0, 120)
+          : null,
+    };
+  });
+}
+
+function validateRouteNetwork(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const rawNodes = source.nodes === undefined ? [] : source.nodes;
+  const rawEdges = source.edges === undefined ? [] : source.edges;
+
+  if (!Array.isArray(rawNodes) || !Array.isArray(rawEdges)) {
+    throw new Error("La red de rutas no contiene nodos y conexiones válidos.");
+  }
+  if (rawNodes.length > MAX_ROUTE_NODES) {
+    throw new Error(`La red contiene demasiados nodos (${rawNodes.length}).`);
+  }
+  if (rawEdges.length > MAX_ROUTE_EDGES) {
+    throw new Error(`La red contiene demasiadas conexiones (${rawEdges.length}).`);
+  }
+
+  const ids = new Set();
+  const nodes = rawNodes.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`Nodo inválido en la posición ${index + 1}.`);
+    }
+    let id = cleanText(item.id, `node-${index + 1}`, 120);
+    if (ids.has(id)) id = `node-${index + 1}`;
+    ids.add(id);
+    const position = vector3(item.position);
+    position[1] = 0;
+    return { id, position };
+  });
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edgeIds = new Set();
+  const pairs = new Set();
+  const edges = [];
+
+  rawEdges.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const a = cleanText(item.a, "", 120);
+    const b = cleanText(item.b, "", 120);
+    if (!a || !b || a === b || !nodeIds.has(a) || !nodeIds.has(b)) return;
+
+    const pair = a < b ? `${a}::${b}` : `${b}::${a}`;
+    if (pairs.has(pair)) return;
+    pairs.add(pair);
+
+    let id = cleanText(item.id, `edge-${index + 1}`, 120);
+    if (edgeIds.has(id)) id = `edge-${index + 1}`;
+    edgeIds.add(id);
+    edges.push({ id, a, b });
+  });
+
+  return { nodes, edges };
+}
+
 export function createProjectDocument({
   objects,
   settings,
   camera,
+  places = [],
+  routeNetwork = { nodes: [], edges: [] },
 }) {
   return {
     schema: SCHEMA,
     version: VERSION,
     savedAt: new Date().toISOString(),
     editor: {
-      name: "Resort Map Builder",
+      name: "Wizard Map Design",
       units: "meters",
     },
     settings,
     camera,
     objects,
+    places,
+    routeNetwork,
   };
 }
 
@@ -52,7 +153,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, 2, 3, VERSION].includes(Number(input.version))) {
+  if (![1, 2, 3, 4, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -250,6 +351,8 @@ export function validateProjectDocument(
       target: vector3(camera.target, [0, 0, 0]),
     },
     objects,
+    places: validatePlaces(input.places),
+    routeNetwork: validateRouteNetwork(input.routeNetwork),
   };
 }
 

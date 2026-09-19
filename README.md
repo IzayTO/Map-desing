@@ -1,25 +1,64 @@
-# Resort Map Builder · Parte 8
+# Wizard Map Design parte 8
 
-Esta carpeta parte de la versión 6.7.2 del repositorio y añade dos bloques nuevos sin reescribir el núcleo estable:
+Esta entrega parte **directamente de Resort Map Builder 6.7.2**, conservando el constructor 3D estable y sumando completas las Partes 7 y 8 sin implementar pathfinding todavía.
 
-- **Parte 7 · Lugares importantes**: marcadores ligeros para Edificio 65, Lobby, Piscina de olas, Restaurante, Spa, Recepción, etc.
-- **Parte 8 · Editor de red de rutas**: nodos y conexiones manuales para construir la red por donde más adelante se calcularán recorridos.
+## Qué incluye
 
-## Importante
+- Constructor de edificios, geometrías y props existente.
+- Mover, rotar y escalar con TransformControls.
+- Ctrl durante rotación = snap de 45°; al soltar Ctrl vuelve la rotación libre.
+- Escalado desde un lado, bloqueo, duplicado, eliminación, opacidad, Undo/Redo e imanes.
+- Imagen guía y guardado/carga de `resort.json`.
+- Contornos basados en `EdgesGeometry` como hijos de los meshes compatibles.
+- Mini brújula 2D.
+- **X/Y/Z corregidos mediante sprites Three.js**, sin offsets DOM dependientes del ancho de los paneles.
+- **Parte 7 · Lugares importantes**.
+- **Parte 8 · Editor manual de red de rutas**.
+- Ajustes de interfaz móvil, incluyendo **Deshacer / Rehacer / Restablecer vista juntos en la zona inferior derecha**.
 
-Todavía **no hay pathfinding**. No se implementa Dijkstra ni A*. La red únicamente se dibuja, edita y guarda.
+## Parte 7 · Lugares importantes
 
-## Coordenadas X / Y / Z
+Dentro de **Editar → Lugares** puedes:
 
-La Parte 8 oculta la capa HTML anterior y coloca X/Y/Z como sprites dentro de la misma escena Three.js del gizmo. Así las letras ya no dependen del desplazamiento del canvas causado por paneles laterales y se comportan igual en móvil y escritorio.
+1. pulsar `Agregar lugar`;
+2. tocar/clicar el suelo;
+3. cambiar nombre y categoría;
+4. mover el marcador;
+5. bloquearlo;
+6. ocultarlo/mostrarlo;
+7. eliminarlo.
 
-## Guardado
+Los marcadores son sprites ligeros. El nombre se muestra solo al seleccionar el lugar o al pasar el puntero sobre él en PC. Cada lugar tiene un ID persistente y un campo `routeNodeId` preparado para una asociación futura con la red.
 
-El archivo `resort.json` mantiene el schema principal de la versión 6.7.2 y añade un bloque opcional:
+## Parte 8 · Red de rutas
+
+Dentro de **Editar → Rutas** puedes:
+
+- crear nodos tocando/clicando el suelo;
+- seleccionar y mover nodos;
+- eliminar nodos;
+- conectar dos nodos de manera explícita;
+- desconectar conexiones existentes.
+
+La visualización utiliza un `InstancedMesh` para los nodos y un único `LineSegments` para las conexiones. Las líneas se reconstruyen únicamente cuando cambia la red o se mueve un nodo.
+
+No permite conexiones de un nodo consigo mismo ni duplicados A-B / B-A. Al borrar un nodo se eliminan automáticamente sus conexiones.
+
+## Todavía NO incluye
+
+- Dijkstra.
+- A*.
+- cálculo automático origen → destino.
+- flechas o instrucciones para huéspedes.
+
+Esta fase solamente construye correctamente el mapa, los lugares y el grafo físico.
+
+## `resort.json`
+
+La versión de documento pasa a schema 5 y añade, en el nivel principal:
 
 ```json
-"part8": {
-  "version": 1,
+{
   "places": [],
   "routeNetwork": {
     "nodes": [],
@@ -28,10 +67,14 @@ El archivo `resort.json` mantiene el schema principal de la versión 6.7.2 y añ
 }
 ```
 
-Los proyectos antiguos siguen cargando: si no existe `part8`, se inicia con lugares y red vacíos.
+Los proyectos antiguos de las versiones 1–4 continúan siendo aceptados. Si un archivo viejo no contiene esos campos, se restauran como listas vacías.
 
-## Instalación
+## Archivos
 
-Copia **el contenido de esta carpeta PARTE_8** a la raíz del repositorio GitHub Pages, reemplazando los archivos con el mismo nombre y añadiendo `part8-preload.js`, `part8.js` y `part8.css`.
+La entrega conserva la misma base de 11 archivos de 6.7.2 (adaptando solamente los que necesitan integración) y añade tres módulos nuevos:
 
-La carpeta `BACKUP_6.7.2` del ZIP es únicamente respaldo y no debe mezclarse con la raíz del sitio.
+- `axis-overlay.js`
+- `places.js`
+- `route-editor.js`
+
+Para publicar, copia **todos los archivos de esta carpeta** a la raíz del repositorio de GitHub Pages, reemplazando los archivos con el mismo nombre y añadiendo los tres módulos nuevos.

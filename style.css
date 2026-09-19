@@ -1283,3 +1283,354 @@ input:disabled{
     bottom:18px;
   }
 }
+
+/* ==========================================================
+   WIZARD MAP DESIGN · PARTE 8
+   Editar = Objetos / Lugares / Rutas + acciones rápidas móvil
+   ========================================================== */
+.edit-section-tabs{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:4px;
+  padding:7px;
+  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.72);
+}
+.edit-section-tab{
+  min-width:0;
+  min-height:34px;
+  padding:0 6px;
+  border:0;
+  border-radius:9px;
+  background:rgba(0,0,0,.045);
+  color:#626262;
+  font-size:.61rem;
+  font-weight:680;
+  cursor:pointer;
+}
+.edit-section-tab.active{
+  background:#1c1c1c;
+  color:#fff;
+  box-shadow:0 4px 11px rgba(0,0,0,.11);
+}
+.editor-section{min-width:0}
+.special-editor-content{
+  padding:12px;
+  display:grid;
+  gap:11px;
+}
+.special-editor-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+.special-editor-actions.wrap{grid-template-columns:repeat(2,minmax(0,1fr))}
+.special-editor-button{
+  min-height:37px;
+  padding:0 9px;
+  border:0;
+  border-radius:9px;
+  background:rgba(0,0,0,.06);
+  color:#383838;
+  font-size:.62rem;
+  font-weight:660;
+  cursor:pointer;
+}
+.special-editor-button.primary,
+.special-editor-button.active{
+  background:#1c1c1c;
+  color:#fff;
+}
+.special-editor-button.danger{
+  color:var(--danger);
+  background:rgba(164,63,63,.08);
+}
+.special-editor-button:disabled{opacity:.4;cursor:default}
+.special-editor-note{
+  margin:0;
+  min-height:38px;
+  padding:9px 10px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:rgba(255,255,255,.56);
+  color:#707070;
+  font-size:.59rem;
+  line-height:1.45;
+}
+.special-editor-card{
+  display:grid;
+  gap:9px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.56);
+}
+.special-editor-card .section-label{margin:0 0 1px}
+.editor-select{
+  width:100%;
+  min-height:37px;
+  padding:0 9px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:rgba(255,255,255,.82);
+  color:#303030;
+  font-size:.66rem;
+}
+.special-editor-list-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--muted-2);
+  font-size:.54rem;
+  font-weight:720;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.special-editor-list-head strong{
+  min-width:24px;
+  min-height:22px;
+  padding:0 6px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:rgba(0,0,0,.06);
+  color:#555;
+  font-size:.59rem;
+  letter-spacing:0;
+}
+.special-editor-list{
+  display:grid;
+  gap:4px;
+  max-height:210px;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.editor-list-row{
+  width:100%;
+  min-height:42px;
+  padding:6px 8px 6px 10px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  border:0;
+  border-radius:9px;
+  background:rgba(0,0,0,.045);
+  color:#444;
+  text-align:left;
+  cursor:pointer;
+}
+.editor-list-row>span:first-child{min-width:0;display:grid;gap:1px}
+.editor-list-row strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.63rem;
+  font-weight:660;
+}
+.editor-list-row small{color:var(--muted);font-size:.54rem}
+.editor-list-row.active{background:#1c1c1c;color:#fff}
+.editor-list-row.active small{color:rgba(255,255,255,.65)}
+.editor-row-state{
+  min-width:22px;
+  min-height:22px;
+  padding:0 5px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:rgba(255,255,255,.58);
+  color:#555;
+  font-size:.56rem;
+}
+.editor-list-row.active .editor-row-state{background:rgba(255,255,255,.16);color:#fff}
+.editor-empty-list{
+  padding:13px 10px;
+  border:1px dashed var(--border-strong);
+  border-radius:10px;
+  color:var(--muted);
+  font-size:.59rem;
+  line-height:1.45;
+}
+.editor-empty-list.compact{padding:9px}
+.route-stats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.route-stats span{
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  border-radius:9px;
+  background:rgba(0,0,0,.045);
+  color:#686868;
+  font-size:.58rem;
+}
+.route-stats strong{color:#292929;font-size:.68rem}
+.route-selected-name{font-size:.7rem}
+.route-connections{display:grid;gap:5px}
+.route-connection-row{
+  min-height:34px;
+  padding:4px 5px 4px 9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border-radius:8px;
+  background:rgba(0,0,0,.045);
+  color:#555;
+  font-size:.58rem;
+}
+.editor-mini-danger{
+  min-height:27px;
+  padding:0 8px;
+  border:0;
+  border-radius:7px;
+  background:rgba(164,63,63,.09);
+  color:var(--danger);
+  font-size:.55rem;
+  font-weight:650;
+}
+
+.mobile-quick-actions{display:none}
+
+@media (max-width:760px), (hover:none) and (pointer:coarse){
+  /* Undo/Redo dejan de vivir arriba: quedan junto al botón de centrar. */
+  .history-toolbar{display:none!important}
+
+  .mobile-quick-actions{
+    position:absolute;
+    z-index:19;
+    right:14px;
+    bottom:82px;
+    display:flex;
+    gap:6px;
+    align-items:center;
+  }
+  .mobile-quick-button{
+    width:44px;
+    height:44px;
+    padding:0;
+    border:1px solid rgba(22,22,22,.11);
+    border-radius:14px;
+    background:rgba(255,255,255,.92);
+    color:#303030;
+    display:grid;
+    place-items:center;
+    box-shadow:0 10px 28px rgba(0,0,0,.11);
+    -webkit-backdrop-filter:blur(18px) saturate(125%);
+    backdrop-filter:blur(18px) saturate(125%);
+    font-size:1.15rem;
+    line-height:1;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mobile-quick-button:disabled{opacity:.34}
+  .mobile-quick-button:not(:disabled):active{transform:scale(.95);background:rgba(245,245,242,.98)}
+  .mobile-quick-button svg{
+    width:21px;
+    height:21px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.8;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+
+  .edit-section-tabs{
+    position:sticky;
+    top:51px;
+    z-index:2;
+    padding:6px 9px;
+    background:rgba(255,255,255,.96);
+    -webkit-backdrop-filter:blur(12px);
+    backdrop-filter:blur(12px);
+  }
+  .edit-section-tab{min-height:40px;font-size:.64rem}
+  .special-editor-content{padding:11px 12px 34px}
+  .special-editor-button{min-height:42px;font-size:.64rem}
+  .editor-select{min-height:42px}
+  .special-editor-list{max-height:260px}
+}
+
+@media (min-width:761px) and (hover:hover) and (pointer:fine){
+  .mobile-quick-actions{display:none!important}
+}
+
+/* Parte 8 · indicador compacto de modo sobre el plano */
+.special-mode-toolbar{
+  position:absolute;
+  z-index:18;
+  top:15px;
+  left:50%;
+  transform:translateX(-50%);
+  max-width:min(460px,calc(100% - 620px));
+  min-height:44px;
+  padding:6px 6px 6px 13px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid rgba(20,20,20,.12);
+  border-radius:14px;
+  background:rgba(255,255,255,.94);
+  box-shadow:0 12px 34px rgba(0,0,0,.09);
+  -webkit-backdrop-filter:blur(22px) saturate(125%);
+  backdrop-filter:blur(22px) saturate(125%);
+  color:#404040;
+  font-size:.62rem;
+  font-weight:640;
+  line-height:1.35;
+  user-select:none;
+  pointer-events:auto;
+}
+.special-mode-toolbar>span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.special-mode-toolbar>button{
+  width:32px;
+  height:32px;
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:9px;
+  background:rgba(0,0,0,.06);
+  color:#555;
+  font-size:1rem;
+  line-height:1;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.special-mode-toolbar>button:active{transform:scale(.95)}
+
+/* El toolbar superior tiene ahora una cuarta pieza (Undo/Redo) en escritorio. */
+@media (min-width:1081px) and (hover:hover) and (pointer:fine){
+  .topbar{
+    grid-template-columns:minmax(225px,1fr) auto auto minmax(170px,1fr);
+  }
+}
+
+/* En tablet estrecha se usan atajos inferiores/táctiles y evitamos saturar arriba. */
+@media (min-width:761px) and (max-width:1080px){
+  .history-toolbar{display:none!important}
+}
+
+@media (max-width:760px), (hover:none) and (pointer:coarse){
+  .special-mode-toolbar{
+    top:12px;
+    max-width:calc(100% - 28px);
+    min-height:42px;
+    padding-left:12px;
+    font-size:.61rem;
+  }
+  .special-mode-toolbar>button{
+    width:34px;
+    height:34px;
+  }
+}

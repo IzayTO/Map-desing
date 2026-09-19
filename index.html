@@ -6,13 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Resort Map Builder · Parte 8 · lugares importantes y editor de red de rutas."
+    content="Wizard Map Design · Parte 8 · constructor 3D con lugares importantes y editor de red de rutas."
   />
-  <title>Resort Map Builder · Parte 8</title>
+  <title>Wizard Map Design parte 8</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=6.7.2" />
-  <link rel="stylesheet" href="./part8.css?v=8.0" />
+  <link rel="stylesheet" href="./style.css?v=8.0.0" />
 
   <script type="importmap">
   {
@@ -28,10 +27,10 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">RM</div>
+        <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
-          <p class="eyebrow">Resort Map Builder</p>
-          <h1>Constructor 3D</h1>
+          <p class="eyebrow">Wizard Map Design</p>
+          <h1>Wizard Map Design parte 8</h1>
         </div>
       </div>
 
@@ -87,6 +86,11 @@
         >
           ✓
         </button>
+      </div>
+
+      <div class="special-mode-toolbar hidden" id="specialModeToolbar" role="status" aria-live="polite">
+        <span id="specialModeText">Modo de edición</span>
+        <button id="specialModeCancel" type="button" aria-label="Cancelar modo">×</button>
       </div>
 
       <!-- ACCIONES RÁPIDAS DE LA SELECCIÓN -->
@@ -285,116 +289,180 @@
         <div class="scene-list" id="sceneList" aria-live="polite"></div>
       </aside>
 
-      <!-- PROPIEDADES -->
-      <aside class="panel properties-panel" id="propertiesPanel" aria-label="Propiedades del objeto">
+      <!-- EDITAR: OBJETOS / LUGARES / RUTAS -->
+      <aside class="panel properties-panel" id="propertiesPanel" aria-label="Editor de objetos, lugares y rutas">
         <div class="panel-heading">
           <div>
             <span class="panel-kicker" id="propertiesKind">SELECCIÓN</span>
             <strong id="propertiesTitle">Sin selección</strong>
           </div>
-          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar propiedades">×</button>
+          <button class="panel-close" type="button" data-close-panel aria-label="Cerrar edición">×</button>
         </div>
 
-        <div class="empty-properties" id="emptyProperties">
-          Selecciona un edificio o prop en el plano.
+        <div class="edit-section-tabs" role="tablist" aria-label="Sección de edición">
+          <button class="edit-section-tab active" type="button" role="tab" aria-selected="true" data-edit-section="objects">Objetos</button>
+          <button class="edit-section-tab" type="button" role="tab" aria-selected="false" data-edit-section="places">Lugares</button>
+          <button class="edit-section-tab" type="button" role="tab" aria-selected="false" data-edit-section="routes">Rutas</button>
         </div>
 
-        <div class="properties-content hidden" id="propertiesContent">
-          <label class="field field-wide">
-            <span>Nombre</span>
-            <input id="objectName" type="text" maxlength="50" autocomplete="off" />
-          </label>
+        <div class="editor-section" id="objectEditorSection">
+          <div class="empty-properties" id="emptyProperties">
+            Selecciona un edificio o prop en el plano.
+          </div>
 
-          <div id="dimensionFields">
-            <div class="section-label">Dimensiones</div>
-            <div class="field-grid">
-              <label class="field">
-                <span>Ancho X · m</span>
-                <input id="objectWidth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
-              </label>
-              <label class="field">
-                <span>Altura Y · m</span>
-                <input id="objectHeight" type="number" min="0.05" max="100" step="0.1" inputmode="decimal" />
-              </label>
-              <label class="field">
-                <span>Largo Z · m</span>
-                <input id="objectDepth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
+          <div class="properties-content hidden" id="propertiesContent">
+            <label class="field field-wide">
+              <span>Nombre</span>
+              <input id="objectName" type="text" maxlength="50" autocomplete="off" />
+            </label>
+
+            <div id="dimensionFields">
+              <div class="section-label">Dimensiones</div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Ancho X · m</span>
+                  <input id="objectWidth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Altura Y · m</span>
+                  <input id="objectHeight" type="number" min="0.05" max="100" step="0.1" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Largo Z · m</span>
+                  <input id="objectDepth" type="number" min="0.1" max="200" step="0.1" inputmode="decimal" />
+                </label>
+              </div>
+            </div>
+
+            <div id="uniformSizeFields" class="hidden">
+              <div class="section-label">Tamaño</div>
+              <label class="field field-wide">
+                <span>Escala uniforme</span>
+                <div class="range-with-value">
+                  <input id="uniformSize" type="range" min="25" max="300" step="5" value="100" />
+                  <span id="uniformSizeValue">100%</span>
+                </div>
               </label>
             </div>
-          </div>
 
-          <div id="uniformSizeFields" class="hidden">
-            <div class="section-label">Tamaño</div>
+            <div id="parametricFields" class="hidden">
+              <div class="section-label">Escalera</div>
+              <label class="slider-field">
+                <span class="slider-field-head">
+                  <span>Número de escalones</span>
+                  <strong id="stairStepsValue">10</strong>
+                </span>
+                <input id="stairSteps" type="range" min="3" max="30" step="1" value="10" />
+              </label>
+            </div>
+
+            <div class="section-label">Posición</div>
+            <div class="position-sliders">
+              <label class="slider-field">
+                <span class="slider-field-head"><span>Eje X</span><strong id="positionXValue">0.0 m</strong></span>
+                <input id="positionX" type="range" min="-70" max="70" step="0.25" value="0" />
+              </label>
+              <label class="slider-field" id="positionYField">
+                <span class="slider-field-head"><span>Altura Y</span><strong id="positionYValue">0.0 m</strong></span>
+                <input id="positionY" type="range" min="-5" max="40" step="0.25" value="0" />
+              </label>
+              <label class="slider-field">
+                <span class="slider-field-head"><span>Eje Z</span><strong id="positionZValue">0.0 m</strong></span>
+                <input id="positionZ" type="range" min="-70" max="70" step="0.25" value="0" />
+              </label>
+            </div>
+
+            <div class="section-label">Apariencia</div>
+            <label class="slider-field">
+              <span class="slider-field-head"><span>Opacidad del objeto</span><strong id="objectOpacityValue">100%</strong></span>
+              <input id="objectOpacity" type="range" min="15" max="100" step="5" value="100" />
+            </label>
+
+            <div class="locked-note hidden" id="lockedNote">
+              🔒 Objeto bloqueado. Desbloquéalo arriba para moverlo, rotarlo o cambiar sus dimensiones.
+            </div>
+
+            <div class="section-label">Rotación</div>
             <label class="field field-wide">
-              <span>Escala uniforme</span>
-              <div class="range-with-value">
-                <input id="uniformSize" type="range" min="25" max="300" step="5" value="100" />
-                <span id="uniformSizeValue">100%</span>
+              <span>Giro Y · grados</span>
+              <input id="rotationY" type="number" min="-360" max="360" step="1" inputmode="decimal" />
+            </label>
+
+            <div class="properties-actions">
+              <button class="action-button" id="duplicateObject" type="button">Duplicar</button>
+              <button class="action-button danger" id="deleteObject" type="button">Eliminar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-section hidden" id="placesEditorSection">
+          <div class="special-editor-content">
+            <div class="special-editor-actions">
+              <button class="special-editor-button primary" id="placeAddButton" type="button">＋ Agregar lugar</button>
+              <button class="special-editor-button hidden" id="placeCancelButton" type="button">Cancelar</button>
+            </div>
+            <p class="special-editor-note" id="placeModeNote">Selecciona un marcador para editarlo.</p>
+
+            <section class="special-editor-card hidden" id="placeSelectedSection">
+              <div class="section-label">Lugar seleccionado</div>
+              <label class="field field-wide">
+                <span>Nombre</span>
+                <input id="placeName" type="text" maxlength="80" autocomplete="off" />
+              </label>
+              <label class="field field-wide">
+                <span>Categoría</span>
+                <select id="placeCategory" class="editor-select">
+                  <option value="general">General</option>
+                  <option value="edificio">Edificio</option>
+                  <option value="lobby">Lobby</option>
+                  <option value="piscina">Piscina</option>
+                  <option value="restaurante">Restaurante</option>
+                  <option value="spa">Spa</option>
+                  <option value="recepcion">Recepción</option>
+                </select>
+              </label>
+              <div class="special-editor-actions wrap">
+                <button class="special-editor-button" id="placeMoveButton" type="button">Mover</button>
+                <button class="special-editor-button" id="placeLockButton" type="button">Bloquear</button>
+                <button class="special-editor-button" id="placeVisibilityButton" type="button">Ocultar</button>
+                <button class="special-editor-button danger" id="placeDeleteButton" type="button">Eliminar</button>
               </div>
-            </label>
+            </section>
+
+            <div class="special-editor-list-head">
+              <span>Lugares</span><strong id="placeCount">0</strong>
+            </div>
+            <div class="special-editor-list" id="placeList"></div>
           </div>
+        </div>
 
-          <div id="parametricFields" class="hidden">
-            <div class="section-label">Escalera</div>
+        <div class="editor-section hidden" id="routesEditorSection">
+          <div class="special-editor-content">
+            <div class="special-editor-actions">
+              <button class="special-editor-button primary" id="routeAddNodeButton" type="button">＋ Nodo</button>
+              <button class="special-editor-button" id="routeConnectButton" type="button">Conectar</button>
+              <button class="special-editor-button hidden" id="routeCancelButton" type="button">Cancelar</button>
+            </div>
+            <p class="special-editor-note" id="routeModeNote">Aquí solo construimos la red. Todavía no calculamos rutas.</p>
 
-            <label class="slider-field">
-              <span class="slider-field-head">
-                <span>Número de escalones</span>
-                <strong id="stairStepsValue">10</strong>
-              </span>
-              <input id="stairSteps" type="range" min="3" max="30" step="1" value="10" />
-            </label>
-          </div>
+            <div class="route-stats" aria-label="Resumen de la red">
+              <span><strong id="routeNodeCount">0</strong> nodos</span>
+              <span><strong id="routeEdgeCount">0</strong> conexiones</span>
+            </div>
 
-          <div class="section-label">Posición</div>
-          <div class="position-sliders">
-            <label class="slider-field">
-              <span class="slider-field-head">
-                <span>Eje X</span>
-                <strong id="positionXValue">0.0 m</strong>
-              </span>
-              <input id="positionX" type="range" min="-70" max="70" step="0.25" value="0" />
-            </label>
+            <section class="special-editor-card hidden" id="routeSelectedSection">
+              <div class="section-label">Nodo seleccionado</div>
+              <strong class="route-selected-name" id="routeSelectedName">Nodo</strong>
+              <div class="special-editor-actions">
+                <button class="special-editor-button" id="routeMoveNodeButton" type="button">Mover nodo</button>
+                <button class="special-editor-button danger" id="routeDeleteNodeButton" type="button">Eliminar nodo</button>
+              </div>
+              <div class="section-label">Conexiones</div>
+              <div class="route-connections" id="routeConnections"></div>
+            </section>
 
-            <label class="slider-field" id="positionYField">
-              <span class="slider-field-head">
-                <span>Altura Y</span>
-                <strong id="positionYValue">0.0 m</strong>
-              </span>
-              <input id="positionY" type="range" min="-5" max="40" step="0.25" value="0" />
-            </label>
-
-            <label class="slider-field">
-              <span class="slider-field-head">
-                <span>Eje Z</span>
-                <strong id="positionZValue">0.0 m</strong>
-              </span>
-              <input id="positionZ" type="range" min="-70" max="70" step="0.25" value="0" />
-            </label>
-          </div>
-
-          <div class="section-label">Apariencia</div>
-          <label class="slider-field">
-            <span class="slider-field-head">
-              <span>Opacidad del objeto</span>
-              <strong id="objectOpacityValue">100%</strong>
-            </span>
-            <input id="objectOpacity" type="range" min="15" max="100" step="5" value="100" />
-          </label>
-
-          <div class="locked-note hidden" id="lockedNote">
-            🔒 Objeto bloqueado. Desbloquéalo arriba para moverlo, rotarlo o cambiar sus dimensiones.
-          </div>
-
-          <div class="section-label">Rotación</div>
-          <label class="field field-wide">
-            <span>Giro Y · grados</span>
-            <input id="rotationY" type="number" min="-360" max="360" step="1" inputmode="decimal" />
-          </label>
-
-          <div class="properties-actions">
-            <button class="action-button" id="duplicateObject" type="button">Duplicar</button>
-            <button class="action-button danger" id="deleteObject" type="button">Eliminar</button>
+            <div class="special-editor-list-head"><span>Nodos</span></div>
+            <div class="special-editor-list" id="routeNodeList"></div>
           </div>
         </div>
       </aside>
@@ -578,24 +646,22 @@
           />
 
           <p class="project-message" id="projectMessage" aria-live="polite">
-            Se guardan objetos, escaleras, imanes y la imagen guía si la cargas.
+            Se guardan objetos, lugares, red de rutas, ajustes e imagen guía.
           </p>
         </div>
       </section>
 
-      <!-- REINICIO RÁPIDO DE CÁMARA EN MÓVIL -->
-      <button
-        class="mobile-reset-view"
-        id="mobileResetView"
-        type="button"
-        aria-label="Restablecer vista 3D"
-        title="Restablecer vista"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5.2 8.1A7.4 7.4 0 1 1 4.8 15" />
-          <path d="M5.2 8.1V3.8M5.2 8.1H9.5" />
-        </svg>
-      </button>
+      <!-- ACCIONES RÁPIDAS EN MÓVIL: deshacer, rehacer y centrar -->
+      <div class="mobile-quick-actions" aria-label="Acciones rápidas">
+        <button class="mobile-quick-button" id="mobileUndo" type="button" aria-label="Deshacer" title="Deshacer">↶</button>
+        <button class="mobile-quick-button" id="mobileRedo" type="button" aria-label="Rehacer" title="Rehacer">↷</button>
+        <button class="mobile-quick-button" id="mobileResetView" type="button" aria-label="Restablecer vista 3D" title="Restablecer vista">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5.2 8.1A7.4 7.4 0 1 1 4.8 15" />
+            <path d="M5.2 8.1V3.8M5.2 8.1H9.5" />
+          </svg>
+        </button>
+      </div>
 
       <!-- MOBILE DRAWER BACKDROP -->
       <button class="mobile-backdrop" id="mobileBackdrop" type="button" aria-label="Cerrar panel"></button>
@@ -690,20 +756,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">Revisa que todos los archivos de la versión 4.1 estén en el repositorio.</p>
+          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Parte 8 · Lugares + red de rutas</span>
+      <span>Wizard Map Design parte 8</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
-  <!-- Parte 8 usa un puente ligero sin reescribir el núcleo 6.7.2 -->
-  <script type="module" src="./part8-preload.js?v=8.0"></script>
-  <script type="module" src="./app.js?v=6.7.2"></script>
-  <script type="module" src="./part8.js?v=8.0"></script>
+  <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
+  <script type="module" src="./app.js?v=8.0.0"></script>
 </body>
 </html>
