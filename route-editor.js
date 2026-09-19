@@ -3,7 +3,18 @@ import * as THREE from "three";
 const NODE_NORMAL = new THREE.Color(0x59656f);
 const NODE_SELECTED = new THREE.Color(0x171717);
 const NODE_PENDING = new THREE.Color(0x2f8f73);
+const EDGE_UNASSIGNED = new THREE.Color(0x59656f);
 const MAX_REASONABLE_NODES = 4096;
+const ROUTE_COLORS = [
+  "#4f7cac",
+  "#2f8f73",
+  "#c06b45",
+  "#8a66a3",
+  "#ba8b2f",
+  "#4e8b9a",
+  "#9b5c66",
+  "#66745b",
+];
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -19,6 +30,16 @@ function cleanId(value, prefix) {
   return (text || makeId(prefix)).slice(0, 120);
 }
 
+function cleanName(value, fallback) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return (text || fallback).slice(0, 80);
+}
+
+function cleanColor(value, fallback = "#59656f") {
+  const text = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return /^#[0-9a-f]{6}$/.test(text) ? text : fallback;
+}
+
 function edgeKey(a, b) {
   return a < b ? `${a}::${b}` : `${b}::${a}`;
 }
@@ -26,9 +47,24 @@ function edgeKey(a, b) {
 export function normalizeRouteNetwork(input = {}) {
   const rawNodes = Array.isArray(input?.nodes) ? input.nodes : [];
   const rawEdges = Array.isArray(input?.edges) ? input.edges : [];
+  const rawRoutes = Array.isArray(input?.routes) ? input.routes : [];
+
+  const routeIds = new Set();
+  const routes = [];
+  rawRoutes.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    let id = cleanId(item.id, "route");
+    if (routeIds.has(id)) id = makeId("route");
+    routeIds.add(id);
+    routes.push({
+      id,
+      name: cleanName(item.name, `Ruta ${index + 1}`),
+      color: cleanColor(item.color, ROUTE_COLORS[index % ROUTE_COLORS.length]),
+    });
+  });
+
   const ids = new Set();
   const nodes = [];
-
   for (const item of rawNodes.slice(0, MAX_REASONABLE_NODES)) {
     if (!item || !Array.isArray(item.position)) continue;
     let id = cleanId(item.id, "node");
@@ -60,10 +96,25 @@ export function normalizeRouteNetwork(input = {}) {
     let id = cleanId(item.id, "edge");
     if (edgeIds.has(id)) id = makeId("edge");
     edgeIds.add(id);
-    edges.push({ id, a, b });
+    edges.push({
+      id,
+      a,
+      b,
+      routeId: typeof item.routeId === "string" && routeIds.has(item.routeId)
+        ? item.routeId
+        : null,
+    });
   }
 
-  return { nodes, edges };
+  // Una ruta guardada siempre debe tener al menos una conexión.
+  const usedRouteIds = new Set(edges.map((edge) => edge.routeId).filter(Boolean));
+  const validRoutes = routes.filter((route) => usedRouteIds.has(route.id));
+  const validIds = new Set(validRoutes.map((route) => route.id));
+  for (const edge of edges) {
+    if (edge.routeId && !validIds.has(edge.routeId)) edge.routeId = null;
+  }
+
+  return { nodes, edges, routes: validRoutes };
 }
 
 function nextCapacity(count) {
@@ -94,9 +145,10 @@ export function createRouteEditor({
     toneMapped: false,
   });
   const edgeMaterial = new THREE.LineBasicMaterial({
-    color: 0x59656f,
+    color: 0xffffff,
+    vertexColors: true,
     transparent: true,
-    opacity: 0.74,
+    opacity: 0.82,
     depthWrite: false,
     toneMapped: false,
   });
@@ -116,9 +168,10 @@ export function createRouteEditor({
   const matrix = new THREE.Matrix4();
   const color = new THREE.Color();
 
-  let network = { nodes: [], edges: [] };
+  let network = { nodes: [], edges: [], routes: [] };
   let selectedId = null;
   let connectFirstId = null;
+  let activeRouteId = null;
   let interaction = "idle";
   let active = false;
   let customNote = "";
@@ -127,9 +180,12 @@ export function createRouteEditor({
   const addButton = panel?.querySelector("#routeAddNodeButton");
   const connectButton = panel?.querySelector("#routeConnectButton");
   const cancelButton = panel?.querySelector("#routeCancelButton");
+  const saveRouteButton = panel?.querySelector("#routeSaveButton");
   const modeNote = panel?.querySelector("#routeModeNote");
   const nodeCount = panel?.querySelector("#routeNodeCount");
   const edgeCount = panel?.querySelector("#routeEdgeCount");
+  const savedCount = panel?.querySelector("#routeSavedCount");
+  const savedList = panel?.querySelector("#routeSavedList");
   const listNode = panel?.querySelector("#routeNodeList");
   const selectedSection = panel?.querySelector("#routeSelectedSection");
   const selectedName = panel?.querySelector("#routeSelectedName");
@@ -141,13 +197,20 @@ export function createRouteEditor({
     return network.nodes.find((node) => node.id === id) ?? null;
   }
 
+  function routeById(id) {
+    return network.routes.find((route) => route.id === id) ?? null;
+  }
+
+  function pruneEmptyRoutes() {
+    const used = new Set(network.edges.map((edge) => edge.routeId).filter(Boolean));
+    network.routes = network.routes.filter((route) => used.has(route.id));
+    if (activeRouteId && !used.has(activeRouteId)) activeRouteId = null;
+  }
+
   function ensureNodeMesh(count) {
     if (nodeMesh && count <= nodeCapacity) return;
     const next = nextCapacity(Math.max(1, count));
-    if (nodeMesh) {
-      root.remove(nodeMesh);
-      nodeMesh.dispose?.();
-    }
+    if (nodeMesh) root.remove(nodeMesh);
 
     nodeMesh = new THREE.InstancedMesh(nodeGeometry, nodeMaterial, next);
     nodeMesh.name = "RMB_ROUTE_NODES";
@@ -190,28 +253,47 @@ export function createRouteEditor({
     if (nodeMesh.instanceColor) nodeMesh.instanceColor.needsUpdate = true;
   }
 
+  function edgeColor(edge) {
+    const route = routeById(edge.routeId);
+    if (!route) return EDGE_UNASSIGNED;
+    color.set(route.color);
+    return color;
+  }
+
   function rebuildEdges() {
     const map = new Map(network.nodes.map((node) => [node.id, node]));
     const positions = new Float32Array(network.edges.length * 6);
+    const colors = new Float32Array(network.edges.length * 6);
     let offset = 0;
 
     for (const edge of network.edges) {
       const a = map.get(edge.a);
       const b = map.get(edge.b);
       if (!a || !b) continue;
+      const routeColor = edgeColor(edge);
+      const vertex = offset / 3;
+
       positions[offset++] = a.position[0];
       positions[offset++] = 0;
       positions[offset++] = a.position[2];
       positions[offset++] = b.position[0];
       positions[offset++] = 0;
       positions[offset++] = b.position[2];
+
+      const colorOffset = vertex * 3;
+      colors[colorOffset] = routeColor.r;
+      colors[colorOffset + 1] = routeColor.g;
+      colors[colorOffset + 2] = routeColor.b;
+      colors[colorOffset + 3] = routeColor.r;
+      colors[colorOffset + 4] = routeColor.g;
+      colors[colorOffset + 5] = routeColor.b;
     }
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(offset === positions.length ? positions : positions.slice(0, offset), 3)
-    );
+    const usedPositions = offset === positions.length ? positions : positions.slice(0, offset);
+    const usedColors = colors.slice(0, usedPositions.length);
+    geometry.setAttribute("position", new THREE.BufferAttribute(usedPositions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(usedColors, 3));
     edgeLines.geometry.dispose?.();
     edgeLines.geometry = geometry;
     edgeLines.computeBoundingSphere?.();
@@ -278,9 +360,14 @@ export function createRouteEditor({
     if (!a || !b || a === b || !nodeById(a) || !nodeById(b)) return false;
     const key = edgeKey(a, b);
     if (network.edges.some((edge) => edgeKey(edge.a, edge.b) === key)) return false;
-    network.edges.push({ id: makeId("edge"), a, b });
+    network.edges.push({
+      id: makeId("edge"),
+      a,
+      b,
+      routeId: routeById(activeRouteId) ? activeRouteId : null,
+    });
     rebuildEdges();
-    onMutate("Conectar nodos");
+    onMutate(activeRouteId ? "Extender ruta guardada" : "Conectar nodos");
     return true;
   }
 
@@ -289,6 +376,7 @@ export function createRouteEditor({
     const before = network.edges.length;
     network.edges = network.edges.filter((edge) => edgeKey(edge.a, edge.b) !== key);
     if (network.edges.length === before) return;
+    pruneEmptyRoutes();
     rebuildEdges();
     updateUi();
     onMutate("Desconectar nodos");
@@ -299,6 +387,7 @@ export function createRouteEditor({
     const id = selectedId;
     network.nodes = network.nodes.filter((node) => node.id !== id);
     network.edges = network.edges.filter((edge) => edge.a !== id && edge.b !== id);
+    pruneEmptyRoutes();
     selectedId = null;
     if (connectFirstId === id) connectFirstId = null;
     interaction = "idle";
@@ -307,6 +396,99 @@ export function createRouteEditor({
     updateUi();
     onSelectionChange(null);
     onMutate("Eliminar nodo de ruta");
+  }
+
+  function unassignedComponentEdges() {
+    const unassigned = network.edges.filter((edge) => !edge.routeId);
+    if (!unassigned.length) return [];
+
+    let start = selectedId;
+    if (!start || !unassigned.some((edge) => edge.a === start || edge.b === start)) {
+      start = unassigned[0].a;
+    }
+
+    const queue = [start];
+    const visitedNodes = new Set([start]);
+    const foundEdges = new Set();
+
+    while (queue.length) {
+      const nodeId = queue.shift();
+      for (const edge of unassigned) {
+        if (edge.a !== nodeId && edge.b !== nodeId) continue;
+        foundEdges.add(edge.id);
+        const other = edge.a === nodeId ? edge.b : edge.a;
+        if (!visitedNodes.has(other)) {
+          visitedNodes.add(other);
+          queue.push(other);
+        }
+      }
+    }
+
+    return unassigned.filter((edge) => foundEdges.has(edge.id));
+  }
+
+  function saveRoute() {
+    const edges = unassignedComponentEdges();
+    if (!edges.length) {
+      setNote("Para guardar una ruta necesitas al menos 2 nodos conectados por 1 conexión sin asignar.");
+      return;
+    }
+
+    const route = {
+      id: makeId("route"),
+      name: `Ruta ${network.routes.length + 1}`,
+      color: ROUTE_COLORS[network.routes.length % ROUTE_COLORS.length],
+    };
+    network.routes.push(route);
+    for (const edge of edges) edge.routeId = route.id;
+    activeRouteId = null;
+    customNote = `Ruta guardada con ${edges.length} ${edges.length === 1 ? "conexión" : "conexiones"}.`;
+    rebuildEdges();
+    updateUi();
+    onMutate("Guardar ruta");
+  }
+
+  function setRouteActive(id) {
+    activeRouteId = activeRouteId === id ? null : (routeById(id)?.id || null);
+    customNote = activeRouteId
+      ? `Editando ${routeById(activeRouteId)?.name || "ruta"}. Las nuevas conexiones usarán su color.`
+      : "Edición de ruta cerrada. Las nuevas conexiones quedarán sin asignar.";
+    updateUi();
+  }
+
+  function renameRoute(id, name) {
+    const route = routeById(id);
+    if (!route) return;
+    const next = cleanName(name, route.name);
+    if (next === route.name) return;
+    route.name = next;
+    updateUi();
+    onMutate("Renombrar ruta");
+  }
+
+  function recolorRoute(id, value) {
+    const route = routeById(id);
+    if (!route) return;
+    const next = cleanColor(value, route.color);
+    if (next === route.color) return;
+    route.color = next;
+    rebuildEdges();
+    updateUi();
+    onMutate("Cambiar color de ruta");
+  }
+
+  function deleteRoute(id) {
+    const route = routeById(id);
+    if (!route) return;
+    for (const edge of network.edges) {
+      if (edge.routeId === id) edge.routeId = null;
+    }
+    network.routes = network.routes.filter((item) => item.id !== id);
+    if (activeRouteId === id) activeRouteId = null;
+    customNote = `Se quitó “${route.name}”. Sus conexiones siguen en la red.`;
+    rebuildEdges();
+    updateUi();
+    onMutate("Quitar ruta guardada");
   }
 
   function updatePointer(event) {
@@ -356,7 +538,9 @@ export function createRouteEditor({
     connectFirstId = null;
     const created = connect(first, id);
     customNote = created
-      ? "Conexión creada. Puedes pulsar Conectar otra vez para añadir otra."
+      ? activeRouteId
+        ? `Conexión añadida a ${routeById(activeRouteId)?.name || "la ruta"}.`
+        : "Conexión creada. Puedes guardarla como ruta cuando termines ese tramo."
       : "Esos nodos ya estaban conectados.";
     interaction = "idle";
     refreshNodeColors();
@@ -436,7 +620,9 @@ export function createRouteEditor({
       const row = document.createElement("div");
       row.className = "route-connection-row";
       const label = document.createElement("span");
-      label.textContent = `↔ Nodo ${indexById.get(otherId) ?? "?"}`;
+      const route = routeById(edge.routeId);
+      label.textContent = `↔ Nodo ${indexById.get(otherId) ?? "?"}${route ? ` · ${route.name}` : ""}`;
+      if (route) label.style.borderLeft = `3px solid ${route.color}`;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "editor-mini-danger";
@@ -447,9 +633,68 @@ export function createRouteEditor({
     }
   }
 
+  function renderSavedRoutes() {
+    if (!savedList) return;
+    savedList.replaceChildren();
+
+    if (!network.routes.length) {
+      const empty = document.createElement("div");
+      empty.className = "editor-empty-list compact";
+      empty.textContent = "Aún no guardas rutas. Construye un tramo y pulsa Guardar ruta.";
+      savedList.append(empty);
+      return;
+    }
+
+    for (const route of network.routes) {
+      const edgeTotal = network.edges.filter((edge) => edge.routeId === route.id).length;
+      const row = document.createElement("div");
+      row.className = `saved-route-row${route.id === activeRouteId ? " active" : ""}`;
+      row.dataset.savedRouteId = route.id;
+
+      const swatch = document.createElement("input");
+      swatch.type = "color";
+      swatch.className = "saved-route-color";
+      swatch.value = route.color;
+      swatch.dataset.routeColorId = route.id;
+      swatch.title = "Color de la ruta";
+
+      const name = document.createElement("input");
+      name.type = "text";
+      name.className = "saved-route-name";
+      name.maxLength = 80;
+      name.value = route.name;
+      name.dataset.routeNameId = route.id;
+      name.setAttribute("aria-label", "Nombre de ruta");
+
+      const count = document.createElement("small");
+      count.className = "saved-route-count";
+      count.textContent = `${edgeTotal} ${edgeTotal === 1 ? "conexión" : "conexiones"}`;
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "saved-route-edit";
+      edit.dataset.routeEditId = route.id;
+      edit.textContent = route.id === activeRouteId ? "Cerrar" : "Editar";
+      edit.title = route.id === activeRouteId
+        ? "Dejar de asignar nuevas conexiones a esta ruta"
+        : "Las nuevas conexiones se añadirán a esta ruta";
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "saved-route-remove";
+      remove.dataset.routeDeleteId = route.id;
+      remove.textContent = "×";
+      remove.title = "Quitar ruta guardada sin borrar sus conexiones";
+
+      row.append(swatch, name, count, edit, remove);
+      savedList.append(row);
+    }
+  }
+
   function updateUi() {
     if (nodeCount) nodeCount.textContent = String(network.nodes.length);
     if (edgeCount) edgeCount.textContent = String(network.edges.length);
+    if (savedCount) savedCount.textContent = String(network.routes.length);
     addButton?.classList.toggle("active", interaction === "add");
     connectButton?.classList.toggle("active", interaction === "connect");
     cancelButton?.classList.toggle("hidden", interaction === "idle");
@@ -463,8 +708,12 @@ export function createRouteEditor({
             : interaction === "connect"
               ? connectFirstId
                 ? "Primer nodo seleccionado. Toca el segundo nodo."
-                : "Toca el primer nodo y después el segundo."
-              : "La red solo define por dónde podrá pasar una ruta. Todavía no calcula recorridos."
+                : activeRouteId
+                  ? `Conectando dentro de ${routeById(activeRouteId)?.name || "la ruta activa"}.`
+                  : "Toca el primer nodo y después el segundo."
+              : activeRouteId
+                ? `${routeById(activeRouteId)?.name || "Ruta"} está activa: las nuevas conexiones usarán ese color.`
+                : "Construye la red y guarda tramos con nombre/color. Todavía no calculamos recorridos."
       );
     }
 
@@ -478,6 +727,7 @@ export function createRouteEditor({
       connectionsNode.replaceChildren();
     }
 
+    renderSavedRoutes();
     renderNodeList();
     onInteractionChange(interaction, modeNote?.textContent || "");
   }
@@ -498,6 +748,7 @@ export function createRouteEditor({
     network = normalizeRouteNetwork(input);
     selectedId = null;
     connectFirstId = null;
+    activeRouteId = null;
     interaction = "idle";
     customNote = "";
     sync3D({ edges: true });
@@ -515,10 +766,12 @@ export function createRouteEditor({
     setInteraction(interaction === "connect" ? "idle" : "connect");
   });
   cancelButton?.addEventListener("click", () => setInteraction("idle"));
+  saveRouteButton?.addEventListener("click", saveRoute);
   moveButton?.addEventListener("click", () => {
     if (nodeById(selectedId)) setInteraction("move");
   });
   deleteButton?.addEventListener("click", deleteSelected);
+
   listNode?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-route-node-id]");
     if (!button) return;
@@ -535,7 +788,11 @@ export function createRouteEditor({
         connectFirstId = null;
         const created = connect(first, id);
         interaction = "idle";
-        customNote = created ? "Conexión creada." : "Esos nodos ya estaban conectados.";
+        customNote = created
+          ? activeRouteId
+            ? `Conexión añadida a ${routeById(activeRouteId)?.name || "la ruta"}.`
+            : "Conexión creada."
+          : "Esos nodos ya estaban conectados.";
       }
       refreshNodeColors();
       updateUi();
@@ -544,10 +801,31 @@ export function createRouteEditor({
     }
     select(button.dataset.routeNodeId);
   });
+
   connectionsNode?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-disconnect-node-id]");
     if (!button || !selectedId) return;
     disconnect(selectedId, button.dataset.disconnectNodeId);
+  });
+
+  savedList?.addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-route-edit-id]");
+    if (edit) {
+      setRouteActive(edit.dataset.routeEditId);
+      return;
+    }
+    const remove = event.target.closest("[data-route-delete-id]");
+    if (remove) deleteRoute(remove.dataset.routeDeleteId);
+  });
+
+  savedList?.addEventListener("change", (event) => {
+    const nameInput = event.target.closest("[data-route-name-id]");
+    if (nameInput) {
+      renameRoute(nameInput.dataset.routeNameId, nameInput.value);
+      return;
+    }
+    const colorInput = event.target.closest("[data-route-color-id]");
+    if (colorInput) recolorRoute(colorInput.dataset.routeColorId, colorInput.value);
   });
 
   updateUi();
@@ -556,7 +834,6 @@ export function createRouteEditor({
     if (disposed) return;
     disposed = true;
     scene.remove(root);
-    nodeMesh?.dispose?.();
     edgeLines.geometry?.dispose?.();
     edgeMaterial.dispose?.();
     nodeGeometry.dispose?.();

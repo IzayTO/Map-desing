@@ -122,7 +122,7 @@ export function createAxisOverlay({
     object.getWorldQuaternion(quaternion);
 
     const mode = getTransformMode?.() || transformControls.mode || "translate";
-    const localAxes = mode === "scale";
+    const localAxes = mode === "scale" || mode === "rotate";
     const pxToWorld = worldUnitsPerPixel(camera, renderer, origin);
     const offsetPixels = mode === "rotate" ? 48 : 55;
     const labelPixels = 17;

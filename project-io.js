@@ -1,9 +1,10 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 5;
+const VERSION = 6;
 const MAX_OBJECTS = 10000;
 const MAX_PLACES = 2000;
 const MAX_ROUTE_NODES = 10000;
 const MAX_ROUTE_EDGES = 30000;
+const MAX_SAVED_ROUTES = 2000;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -68,9 +69,10 @@ function validateRouteNetwork(input) {
   const source = input && typeof input === "object" ? input : {};
   const rawNodes = source.nodes === undefined ? [] : source.nodes;
   const rawEdges = source.edges === undefined ? [] : source.edges;
+  const rawRoutes = source.routes === undefined ? [] : source.routes;
 
-  if (!Array.isArray(rawNodes) || !Array.isArray(rawEdges)) {
-    throw new Error("La red de rutas no contiene nodos y conexiones válidos.");
+  if (!Array.isArray(rawNodes) || !Array.isArray(rawEdges) || !Array.isArray(rawRoutes)) {
+    throw new Error("La red de rutas no contiene nodos, conexiones o rutas válidas.");
   }
   if (rawNodes.length > MAX_ROUTE_NODES) {
     throw new Error(`La red contiene demasiados nodos (${rawNodes.length}).`);
@@ -78,6 +80,25 @@ function validateRouteNetwork(input) {
   if (rawEdges.length > MAX_ROUTE_EDGES) {
     throw new Error(`La red contiene demasiadas conexiones (${rawEdges.length}).`);
   }
+  if (rawRoutes.length > MAX_SAVED_ROUTES) {
+    throw new Error(`La red contiene demasiadas rutas guardadas (${rawRoutes.length}).`);
+  }
+
+  const routeIds = new Set();
+  const routes = [];
+  const colorPattern = /^#[0-9a-f]{6}$/i;
+  rawRoutes.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    let id = cleanText(item.id, `route-${index + 1}`, 120);
+    if (routeIds.has(id)) id = `route-${index + 1}`;
+    routeIds.add(id);
+    const rawColor = typeof item.color === "string" ? item.color.trim() : "";
+    routes.push({
+      id,
+      name: cleanText(item.name, `Ruta ${index + 1}`, 80),
+      color: colorPattern.test(rawColor) ? rawColor.toLowerCase() : "#59656f",
+    });
+  });
 
   const ids = new Set();
   const nodes = rawNodes.map((item, index) => {
@@ -110,10 +131,20 @@ function validateRouteNetwork(input) {
     let id = cleanText(item.id, `edge-${index + 1}`, 120);
     if (edgeIds.has(id)) id = `edge-${index + 1}`;
     edgeIds.add(id);
-    edges.push({ id, a, b });
+    const routeId = typeof item.routeId === "string" && routeIds.has(item.routeId)
+      ? item.routeId
+      : null;
+    edges.push({ id, a, b, routeId });
   });
 
-  return { nodes, edges };
+  const usedRouteIds = new Set(edges.map((edge) => edge.routeId).filter(Boolean));
+  const validRoutes = routes.filter((route) => usedRouteIds.has(route.id));
+  const validRouteIds = new Set(validRoutes.map((route) => route.id));
+  for (const edge of edges) {
+    if (edge.routeId && !validRouteIds.has(edge.routeId)) edge.routeId = null;
+  }
+
+  return { nodes, edges, routes: validRoutes };
 }
 
 export function createProjectDocument({
@@ -121,7 +152,7 @@ export function createProjectDocument({
   settings,
   camera,
   places = [],
-  routeNetwork = { nodes: [], edges: [] },
+  routeNetwork = { nodes: [], edges: [], routes: [] },
 }) {
   return {
     schema: SCHEMA,
@@ -153,7 +184,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, 2, 3, 4, VERSION].includes(Number(input.version))) {
+  if (![1, 2, 3, 4, 5, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -213,7 +244,15 @@ export function validateProjectDocument(
         typeof item.id === "string" && item.id.trim()
           ? item.id.trim().slice(0, 120)
           : null,
+      rotation: Array.isArray(item.rotation)
+        ? vector3(item.rotation)
+        : [0, finiteNumber(item.rotationY), 0],
       rotationY: finiteNumber(item.rotationY),
+      mirror: {
+        x: Boolean(item.mirror?.x),
+        y: Boolean(item.mirror?.y),
+        z: Boolean(item.mirror?.z),
+      },
       locked: Boolean(item.locked),
       opacity: Math.min(
         1,

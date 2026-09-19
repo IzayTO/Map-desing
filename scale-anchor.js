@@ -64,7 +64,11 @@ export function setupOneSidedScale({
     object.getWorldPosition(centerWorld);
     object.getWorldQuaternion(objectWorldQuaternion);
 
+    const axisKey = currentAxis.toLowerCase();
+    const mirrorSign = Math.sign(object.scale?.[axisKey] || 1) || 1;
+
     axisVector(currentAxis, localAxis)
+      .multiplyScalar(mirrorSign)
       .applyQuaternion(objectWorldQuaternion)
       .normalize();
 
@@ -117,7 +121,9 @@ export function setupOneSidedScale({
 
     // La posición del objeto está expresada en coordenadas de su padre.
     // Por eso usamos su quaternion local para la dirección del eje.
+    const mirrorSign = Math.sign(object.scale?.[key] || 1) || 1;
     axisVector(axis, axisInParent)
+      .multiplyScalar(mirrorSign)
       .applyQuaternion(object.quaternion)
       .normalize();
 
@@ -126,7 +132,7 @@ export function setupOneSidedScale({
       axis,
       key,
       sign: getHandleSign(object, axis),
-      startScale: object.scale[key],
+      startScaleMagnitude: Math.abs(object.scale[key]),
       startPosition: initialPosition.clone(),
       axisInParent: axisInParent.clone(),
       baseDimension: Math.max(
@@ -191,8 +197,8 @@ export function setupOneSidedScale({
     }
 
     const scaleDelta =
-      object.scale[session.key] -
-      session.startScale;
+      Math.abs(object.scale[session.key]) -
+      session.startScaleMagnitude;
 
     const dimensionDelta =
       scaleDelta *

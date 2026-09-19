@@ -12,16 +12,16 @@ import {
   magnetizeXZ,
   snapObjectToObjects,
 } from "./snap.js?v=8.0.0";
-import { setupOneSidedScale } from "./scale-anchor.js?v=8.0.0";
+import { setupOneSidedScale } from "./scale-anchor.js?v=8.1.0";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.0.0";
-import { createAxisOverlay } from "./axis-overlay.js?v=8.0.0";
+} from "./project-io.js?v=8.1.0";
+import { createAxisOverlay } from "./axis-overlay.js?v=8.1.0";
 import { createPlacesManager } from "./places.js?v=8.0.0";
-import { createRouteEditor } from "./route-editor.js?v=8.0.0";
+import { createRouteEditor } from "./route-editor.js?v=8.1.0";
 
 window.__RMB_READY__ = false;
 
@@ -112,7 +112,14 @@ const objectOpacityInput = document.querySelector("#objectOpacity");
 const objectOpacityValue = document.querySelector("#objectOpacityValue");
 const lockedNote = document.querySelector("#lockedNote");
 
+const rotationXInput = document.querySelector("#rotationX");
 const rotationYInput = document.querySelector("#rotationY");
+const rotationZInput = document.querySelector("#rotationZ");
+const mirrorXButton = document.querySelector("#mirrorX");
+const mirrorYButton = document.querySelector("#mirrorY");
+const mirrorZButton = document.querySelector("#mirrorZ");
+const rotationAxisToolbar = document.querySelector("#rotationAxisToolbar");
+const rotationAxisButtons = [...document.querySelectorAll("[data-rotation-axis]")];
 
 const duplicateButton = document.querySelector("#duplicateObject");
 const deleteButton = document.querySelector("#deleteObject");
@@ -194,6 +201,7 @@ const state = {
   historyMuted: false,
   pendingTransformChange: false,
   ctrlRotationSnap: false,
+  rotationAxes: { x: false, y: true, z: false },
   editSection: "objects",
 };
 
@@ -262,6 +270,100 @@ function isCtrlRotationSnapActive() {
     state.ctrlRotationSnap &&
     state.transformMode === "rotate"
   );
+}
+
+function ensureMirrorState(object) {
+  if (!object) return { x: false, y: false, z: false };
+  const current = object.userData.mirror;
+  object.userData.mirror = {
+    x: Boolean(current?.x),
+    y: Boolean(current?.y),
+    z: Boolean(current?.z),
+  };
+  return object.userData.mirror;
+}
+
+function mirrorSign(object, axis) {
+  return ensureMirrorState(object)[axis] ? -1 : 1;
+}
+
+function applyScaleMagnitudes(object, x, y, z) {
+  object.scale.set(
+    Math.max(0.0001, Math.abs(x)) * mirrorSign(object, "x"),
+    Math.max(0.0001, Math.abs(y)) * mirrorSign(object, "y"),
+    Math.max(0.0001, Math.abs(z)) * mirrorSign(object, "z")
+  );
+}
+
+function updateMirrorUi() {
+  const object = state.selected;
+  const mirror = object ? ensureMirrorState(object) : { x: false, y: false, z: false };
+  for (const [axis, button] of [["x", mirrorXButton], ["y", mirrorYButton], ["z", mirrorZButton]]) {
+    if (!button) continue;
+    const active = Boolean(object && mirror[axis]);
+    button.setAttribute("aria-pressed", String(active));
+    button.classList.toggle("active", active);
+    button.disabled = !object || isLocked(object);
+  }
+}
+
+function mirrorSelectedObject(axis) {
+  const object = state.selected;
+  if (!object || isLocked(object) || !["x", "y", "z"].includes(axis)) return;
+
+  const before = new THREE.Box3().setFromObject(object);
+  const mirror = ensureMirrorState(object);
+  mirror[axis] = !mirror[axis];
+
+  const magnitudes = {
+    x: Math.abs(object.scale.x),
+    y: Math.abs(object.scale.y),
+    z: Math.abs(object.scale.z),
+  };
+  applyScaleMagnitudes(object, magnitudes.x, magnitudes.y, magnitudes.z);
+  object.updateMatrixWorld(true);
+
+  // Al reflejar verticalmente, conservamos la misma base para no mandar
+  // escaleras/arquitectura bajo el plano por cambiar el signo de Y.
+  if (axis === "y") {
+    const after = new THREE.Box3().setFromObject(object);
+    if (Number.isFinite(before.min.y) && Number.isFinite(after.min.y)) {
+      object.position.y += before.min.y - after.min.y;
+    }
+  }
+
+  applySelectionConstraints();
+  applyObjectOutlineStyle(object, true);
+  updateSelectionBox();
+  updatePropertiesFromSelection();
+  recordHistory(`Espejo ${axis.toUpperCase()}`);
+}
+
+function updateRotationAxisUi() {
+  const show = Boolean(
+    state.selected &&
+    !isLocked(state.selected) &&
+    state.editSection === "objects" &&
+    state.transformMode === "rotate"
+  );
+
+  rotationAxisToolbar?.classList.toggle("hidden", !show);
+  workspace?.classList.toggle("rotation-axes-active", show);
+
+  for (const button of rotationAxisButtons) {
+    const axis = String(button.dataset.rotationAxis || "").toLowerCase();
+    const enabled = Boolean(state.rotationAxes[axis]);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.classList.toggle("active", enabled);
+  }
+}
+
+function toggleRotationAxis(axis) {
+  const key = String(axis || "").toLowerCase();
+  if (!["x", "y", "z"].includes(key)) return;
+  state.rotationAxes[key] = !state.rotationAxes[key];
+  configureTransformForSelection();
+  updateRotationAxisUi();
 }
 
 function makeId(prefix) {
@@ -1044,7 +1146,7 @@ function captureHistorySnapshot() {
   return {
     objects: state.objects.map(serializeEditorObject),
     places: placesManager?.serialize?.() || [],
-    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [] },
+    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
     nextBuildingNumber: state.nextBuildingNumber,
     nextPropNumbers: { ...state.nextPropNumbers },
     selectedId: state.selected?.userData?.id || null,
@@ -1093,7 +1195,7 @@ function applyHistorySnapshot(snapshot) {
     restoreProjectObject(record);
   }
   placesManager?.restore?.(snapshot.places || []);
-  routeEditor?.restore?.(snapshot.routeNetwork || { nodes: [], edges: [] });
+  routeEditor?.restore?.(snapshot.routeNetwork || { nodes: [], edges: [], routes: [] });
   state.nextBuildingNumber = snapshot.nextBuildingNumber || 1;
   state.nextPropNumbers = { ...(snapshot.nextPropNumbers || {}) };
   const selected = state.objects.find((item) => item.userData.id === snapshot.selectedId);
@@ -1153,9 +1255,12 @@ function updateEditorSectionUi() {
   if (section === "objects") {
     specialModeToolbar?.classList.add("hidden");
     updatePropertiesFromSelection();
+    updateRotationAxisUi();
     return;
   }
 
+  rotationAxisToolbar?.classList.add("hidden");
+  workspace?.classList.remove("rotation-axes-active");
   selectionToolbar?.classList.add("hidden");
   hideAlignmentGuides();
   axisOverlay?.hide?.();
@@ -1305,8 +1410,10 @@ function serializeEditorObject(object) {
     id: object.userData.id,
     name: object.name,
     position: object.position.toArray(),
-    scale: object.scale.toArray(),
+    scale: [Math.abs(object.scale.x), Math.abs(object.scale.y), Math.abs(object.scale.z)],
+    rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
     rotationY: object.rotation.y,
+    mirror: { ...ensureMirrorState(object) },
     locked: isLocked(object),
     opacity: getObjectOpacity(object),
     outlineEnabled:
@@ -1353,7 +1460,7 @@ function serializeProject() {
       target: mapControls.target.toArray(),
     },
     places: placesManager?.serialize?.() || [],
-    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [] },
+    routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
   });
 }
 
@@ -1442,10 +1549,26 @@ function restoreProjectObject(record) {
     );
   }
 
-  object.scale.set(
+  object.userData.mirror = {
+    x: Boolean(record.mirror?.x),
+    y: Boolean(record.mirror?.y),
+    z: Boolean(record.mirror?.z),
+  };
+
+  applyScaleMagnitudes(
+    object,
     record.scale[0],
     record.scale[1],
     record.scale[2]
+  );
+
+  const restoredRotation = Array.isArray(record.rotation)
+    ? record.rotation
+    : [0, record.rotationY || 0, 0];
+  object.rotation.set(
+    Number(restoredRotation[0]) || 0,
+    Number(restoredRotation[1]) || 0,
+    Number(restoredRotation[2]) || 0
   );
 
   object.userData.id = record.id || object.userData.id;
@@ -1591,7 +1714,7 @@ function restoreProject(project) {
 
   restoreProjectSettings(project);
   placesManager?.restore?.(project.places || []);
-  routeEditor?.restore?.(project.routeNetwork || { nodes: [], edges: [] });
+  routeEditor?.restore?.(project.routeNetwork || { nodes: [], edges: [], routes: [] });
   state.editSection = "objects";
   updateEditorSectionUi();
 
@@ -1976,7 +2099,7 @@ function createTransformControls() {
     );
 
     if (state.selected && isUniformObject(state.selected)) {
-      state.lastUniformScale = state.selected.scale.x;
+      state.lastUniformScale = Math.abs(state.selected.scale.x);
     }
   });
 
@@ -2027,6 +2150,7 @@ function createBuilding({
   object.userData.locked = false;
   object.userData.opacity = 1;
   object.userData.id = makeId("building");
+  object.userData.mirror = { x: false, y: false, z: false };
   object.name = name || `Edificio ${state.nextBuildingNumber++}`;
   object.scale.set(
     clamp(width, 0.2, 200),
@@ -2066,6 +2190,7 @@ function createEditorProp(type, {
   object.userData.id = makeId(type);
   object.userData.locked = false;
   object.userData.opacity = 1;
+  object.userData.mirror = { x: false, y: false, z: false };
   object.name = name || nextPropName(type);
   object.position.set(
     x,
@@ -2154,10 +2279,11 @@ function selectObject(object) {
   }
 
   if (isUniformObject(object)) {
-    state.lastUniformScale = object.scale.x;
+    state.lastUniformScale = Math.abs(object.scale.x);
   }
 
   configureTransformForSelection();
+  updateRotationAxisUi();
   createSelectionBox(object);
   refreshSceneList();
   updatePropertiesFromSelection();
@@ -2167,6 +2293,7 @@ function deselectObject() {
   hideAlignmentGuides();
   state.selected = null;
   transformControls.detach();
+  updateRotationAxisUi();
   markOverlayDirty();
   removeSelectionBox();
   refreshSceneList();
@@ -2178,17 +2305,22 @@ function duplicateSelectedObject() {
   if (!source) return;
 
   if (isBuilding(source)) {
-    return createBuilding({
+    const clone = createBuilding({
       name: `${source.name} copia`,
-      width: source.scale.x,
-      height: source.scale.y,
-      depth: source.scale.z,
+      width: Math.abs(source.scale.x),
+      height: Math.abs(source.scale.y),
+      depth: Math.abs(source.scale.z),
       x: source.position.x + 2,
       y: source.position.y,
       z: source.position.z + 2,
       rotationY: source.rotation.y,
-      select: true,
+      select: false,
     });
+    clone.rotation.copy(source.rotation);
+    clone.userData.mirror = { ...ensureMirrorState(source) };
+    applyScaleMagnitudes(clone, Math.abs(source.scale.x), Math.abs(source.scale.y), Math.abs(source.scale.z));
+    selectObject(clone);
+    return clone;
   }
 
   const clone = createEditorProp(source.userData.propType, {
@@ -2196,11 +2328,13 @@ function duplicateSelectedObject() {
     x: source.position.x + 1.5,
     z: source.position.z + 1.5,
     rotationY: source.rotation.y,
-    scale: isUniformObject(source) ? source.scale.x : 1,
+    scale: isUniformObject(source) ? Math.abs(source.scale.x) : 1,
     select: false,
   });
 
   clone.position.y = source.position.y;
+  clone.rotation.copy(source.rotation);
+  clone.userData.mirror = { ...ensureMirrorState(source) };
 
   if (
     source.userData.params &&
@@ -2213,7 +2347,9 @@ function duplicateSelectedObject() {
   }
 
   if (!isUniformObject(source)) {
-    clone.scale.copy(source.scale);
+    applyScaleMagnitudes(clone, Math.abs(source.scale.x), Math.abs(source.scale.y), Math.abs(source.scale.z));
+  } else {
+    applyScaleMagnitudes(clone, Math.abs(source.scale.x), Math.abs(source.scale.y), Math.abs(source.scale.z));
   }
 
   setObjectOpacity(
@@ -2286,6 +2422,7 @@ function setTransformMode(mode) {
   );
 
   configureTransformForSelection();
+  updateRotationAxisUi();
   markOverlayDirty();
 
   for (const button of modeButtons) {
@@ -2303,6 +2440,7 @@ function configureTransformForSelection() {
 
   if (isLocked(object)) {
     transformControls.detach();
+    updateRotationAxisUi();
     return;
   }
 
@@ -2313,10 +2451,11 @@ function configureTransformForSelection() {
   const mode = state.transformMode;
 
   if (mode === "rotate") {
-    transformControls.showX = false;
-    transformControls.showY = true;
-    transformControls.showZ = false;
-    transformControls.setSpace("world");
+    transformControls.showX = Boolean(state.rotationAxes.x);
+    transformControls.showY = Boolean(state.rotationAxes.y);
+    transformControls.showZ = Boolean(state.rotationAxes.z);
+    transformControls.setSpace("local");
+    updateRotationAxisUi();
     return;
   }
 
@@ -2364,7 +2503,7 @@ function applySelectionConstraints() {
 
   if (isUniformObject(object) && state.transformMode === "scale") {
     const previous = state.lastUniformScale;
-    const candidates = [object.scale.x, object.scale.y, object.scale.z];
+    const candidates = [Math.abs(object.scale.x), Math.abs(object.scale.y), Math.abs(object.scale.z)];
     let changed = candidates[0];
     let largestDelta = Math.abs(candidates[0] - previous);
 
@@ -2376,15 +2515,18 @@ function applySelectionConstraints() {
       }
     }
 
-    const uniform = clamp(Math.abs(changed), 0.25, 3);
-    object.scale.setScalar(uniform);
+    const uniform = clamp(changed, 0.25, 3);
+    applyScaleMagnitudes(object, uniform, uniform, uniform);
     state.lastUniformScale = uniform;
   }
 
   if (!isUniformObject(object)) {
-    object.scale.x = clamp(Math.abs(object.scale.x), 0.05, 200);
-    object.scale.y = clamp(Math.abs(object.scale.y), 0.02, 100);
-    object.scale.z = clamp(Math.abs(object.scale.z), 0.05, 200);
+    applyScaleMagnitudes(
+      object,
+      clamp(Math.abs(object.scale.x), 0.05, 200),
+      clamp(Math.abs(object.scale.y), 0.02, 100),
+      clamp(Math.abs(object.scale.z), 0.05, 200)
+    );
   }
 }
 
@@ -2471,6 +2613,8 @@ function updatePropertiesFromSelection() {
     hideAlignmentGuides();
     updateOneSidedScaleUi();
     parametricFields.classList.add("hidden");
+    updateMirrorUi();
+    updateRotationAxisUi();
     return;
   }
 
@@ -2506,7 +2650,7 @@ function updatePropertiesFromSelection() {
   }
 
   if (uniform) {
-    const percentage = Math.round(object.scale.x * 100);
+    const percentage = Math.round(Math.abs(object.scale.x) * 100);
     uniformSizeInput.value = String(clamp(percentage, 25, 300));
     uniformSizeValue.textContent = `${percentage}%`;
   } else {
@@ -2542,7 +2686,10 @@ function updatePropertiesFromSelection() {
   objectOpacityInput.value = String(opacityPercent);
   objectOpacityValue.textContent = `${opacityPercent}%`;
 
+  rotationXInput.value = round2(degrees(object.rotation.x));
   rotationYInput.value = round2(degrees(object.rotation.y));
+  rotationZInput.value = round2(degrees(object.rotation.z));
+  updateMirrorUi();
 
   const geometryControls = [
     widthInput,
@@ -2553,7 +2700,9 @@ function updatePropertiesFromSelection() {
     positionXInput,
     positionYInput,
     positionZInput,
+    rotationXInput,
     rotationYInput,
+    rotationZInput,
   ];
 
   for (const control of geometryControls) {
@@ -2569,26 +2718,29 @@ function updatePropertiesFromSelection() {
 
   lockedNote.classList.toggle("hidden", !locked);
   updateOutlineControls();
+  updateRotationAxisUi();
 }
 
 function getEditableDimensions(object) {
-  if (isBuilding(object)) return object.scale;
+  if (isBuilding(object)) {
+    return { x: Math.abs(object.scale.x), y: Math.abs(object.scale.y), z: Math.abs(object.scale.z) };
+  }
   const base = object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
   return {
-    x: base.x * object.scale.x,
-    y: base.y * object.scale.y,
-    z: base.z * object.scale.z,
+    x: base.x * Math.abs(object.scale.x),
+    y: base.y * Math.abs(object.scale.y),
+    z: base.z * Math.abs(object.scale.z),
   };
 }
 
 function setEditableDimensions(object, width, height, depth) {
   if (isBuilding(object)) {
-    object.scale.set(width, height, depth);
+    applyScaleMagnitudes(object, width, height, depth);
     return;
   }
 
   const base = object.userData.baseDimensions || { x: 1, y: 1, z: 1 };
-  object.scale.set(width / base.x, height / base.y, depth / base.z);
+  applyScaleMagnitudes(object, width / base.x, height / base.y, depth / base.z);
 }
 
 function applyDimensionsFromInputs() {
@@ -2665,12 +2817,10 @@ function applyRotationFromInput() {
   const object = state.selected;
   if (!object || isLocked(object)) return;
 
-  const angle = clamp(
-    numberOrFallback(rotationYInput.value, degrees(object.rotation.y)),
-    -360,
-    360
-  );
-  object.rotation.y = radians(angle);
+  const x = clamp(numberOrFallback(rotationXInput.value, degrees(object.rotation.x)), -360, 360);
+  const y = clamp(numberOrFallback(rotationYInput.value, degrees(object.rotation.y)), -360, 360);
+  const z = clamp(numberOrFallback(rotationZInput.value, degrees(object.rotation.z)), -360, 360);
+  object.rotation.set(radians(x), radians(y), radians(z));
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
@@ -2680,7 +2830,7 @@ function applyUniformSize(percentage) {
   if (!object || isLocked(object) || !isUniformObject(object)) return;
 
   const scale = clamp(percentage / 100, 0.25, 3);
-  object.scale.setScalar(scale);
+  applyScaleMagnitudes(object, scale, scale, scale);
   state.lastUniformScale = scale;
   applySelectionConstraints();
   uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
@@ -3184,10 +3334,20 @@ function installEvents() {
     input.addEventListener("change", () => recordHistory("Mover objeto"));
   }
 
-  rotationYInput.addEventListener("change", () => {
-    applyRotationFromInput();
-    recordHistory("Rotar objeto");
-  });
+  for (const input of [rotationXInput, rotationYInput, rotationZInput]) {
+    input?.addEventListener("change", () => {
+      applyRotationFromInput();
+      recordHistory("Rotar objeto");
+    });
+  }
+
+  mirrorXButton?.addEventListener("click", () => mirrorSelectedObject("x"));
+  mirrorYButton?.addEventListener("click", () => mirrorSelectedObject("y"));
+  mirrorZButton?.addEventListener("click", () => mirrorSelectedObject("z"));
+
+  for (const button of rotationAxisButtons) {
+    button.addEventListener("click", () => toggleRotationAxis(button.dataset.rotationAxis));
+  }
 
   uniformSizeInput.addEventListener("input", (event) => {
     applyUniformSize(Number(event.target.value));
