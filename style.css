@@ -1146,3 +1146,133 @@ input:disabled{
     display:none!important;
   }
 }
+
+
+/* =========================
+   Parte 6.6 · extras UI
+   ========================= */
+.history-toolbar{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--border);
+  border-radius:13px;
+  background:rgba(255,255,255,.72);
+  -webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);
+}
+.history-button{
+  width:34px;
+  height:34px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#4e4e4e;
+  font-size:1rem;
+  cursor:pointer;
+}
+.history-button:disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
+.history-button:not(:disabled):hover{
+  background:rgba(0,0,0,.06);
+}
+.slider-head-side{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-left:auto;
+}
+.axis-number-input{
+  width:72px;
+  height:28px;
+  padding:0 7px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:rgba(255,255,255,.74);
+  color:#333;
+  font-size:.62rem;
+  text-align:right;
+}
+.slider-field-head{
+  gap:8px;
+  flex-wrap:wrap;
+}
+.outline-controls{
+  display:grid;
+  gap:8px;
+}
+.outline-toggle{
+  width:100%;
+}
+.view-extras{
+  display:grid;
+  gap:8px;
+}
+.view-extra-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.axis-label-layer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:17;
+}
+.axis-chip{
+  position:absolute;
+  width:22px;
+  height:22px;
+  margin:-11px 0 0 -11px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:rgba(255,255,255,.95);
+  box-shadow:0 6px 16px rgba(0,0,0,.12);
+  font-size:.66rem;
+  font-weight:700;
+}
+.axis-x{color:#cf5c5c}
+.axis-y{color:#4e9661}
+.axis-z{color:#5e7fd5}
+.mini-compass{
+  position:absolute;
+  right:14px;
+  bottom:14px;
+  width:84px;
+  height:84px;
+  z-index:16;
+  pointer-events:none;
+}
+@media (max-width:760px){
+  .history-toolbar{
+    position:absolute;
+    top:48px;
+    right:14px;
+    z-index:9;
+  }
+  .mini-compass{
+    right:14px;
+    bottom:134px;
+    width:74px;
+    height:74px;
+  }
+  .axis-number-input{
+    width:64px;
+  }
+  .view-extra-grid{
+    grid-template-columns:1fr;
+  }
+}
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  .history-toolbar{
+    justify-self:start;
+  }
+  .mini-compass{
+    right:calc(var(--right-rail) + var(--rail-gap) + 22px);
+    bottom:18px;
+  }
+}

@@ -1,29 +1,30 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.5.1";
-import { setupMobilePanels } from "./ui.js?v=6.5.1";
-import { createPlacementController } from "./placement.js?v=6.5.1";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.5.1";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7";
+import { setupMobilePanels } from "./ui.js?v=6.7";
+import { createPlacementController } from "./placement.js?v=6.7";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.7";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.5.1";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.5.1";
+} from "./snap.js?v=6.7";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.7";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.5.1";
+} from "./project-io.js?v=6.7";
 
 window.__RMB_READY__ = false;
 
 // DOM
 const viewport = document.querySelector("#viewport");
+const workspace = document.querySelector(".workspace");
 const alignmentGuideX = document.querySelector("#alignmentGuideX");
 const alignmentGuideZ = document.querySelector("#alignmentGuideZ");
 const statusDot = document.querySelector("#statusDot");
@@ -114,6 +115,25 @@ const duplicateButton = document.querySelector("#duplicateObject");
 const deleteButton = document.querySelector("#deleteObject");
 const modeButtons = [...document.querySelectorAll("[data-mode]")];
 
+
+let positionXNumberInput = null;
+let positionYNumberInput = null;
+let positionZNumberInput = null;
+let historyUndoButton = null;
+let historyRedoButton = null;
+let outlineControlsWrap = null;
+let objectOutlineToggle = null;
+let objectOutlineStrengthInput = null;
+let objectOutlineStrengthValue = null;
+let axisLabelsToggle = null;
+let compassToggle = null;
+let axisLabelsLayer = null;
+let axisLabelX = null;
+let axisLabelY = null;
+let axisLabelZ = null;
+let compassCanvas = null;
+let compassCtx = null;
+
 const perspectiveViewButton = document.querySelector("#perspectiveView");
 const topViewButton = document.querySelector("#topView");
 const resetViewButton = document.querySelector("#resetView");
@@ -159,6 +179,13 @@ const state = {
     height: 140,
     aspectRatio: 1,
   },
+  showAxisLabels: true,
+  showCompass: true,
+  history: [],
+  historyIndex: -1,
+  historyMuted: false,
+  pendingTransformChange: false,
+  ctrlRotationSnap: false,
 };
 
 let scene;
@@ -203,6 +230,25 @@ function degrees(rad) {
 
 function radians(deg) {
   return THREE.MathUtils.degToRad(deg);
+}
+
+function updateCtrlRotationSnap(enabled) {
+  state.ctrlRotationSnap = Boolean(enabled);
+
+  if (!transformControls) return;
+
+  transformControls.setRotationSnap(
+    state.ctrlRotationSnap
+      ? THREE.MathUtils.degToRad(45)
+      : null
+  );
+}
+
+function isCtrlRotationSnapActive() {
+  return Boolean(
+    state.ctrlRotationSnap &&
+    state.transformMode === "rotate"
+  );
 }
 
 function makeId(prefix) {
@@ -332,6 +378,7 @@ function getObjectOpacity(object) {
 
 function ensureLocalMaterials(object) {
   object.traverse((child) => {
+    if (child.userData?.isOutlinePart) return;
     if (!child.material || child.userData.editorMaterialLocal) return;
 
     if (Array.isArray(child.material)) {
@@ -353,6 +400,7 @@ function setObjectOpacity(object, value) {
   ensureLocalMaterials(object);
 
   object.traverse((child) => {
+    if (child.userData?.isOutlinePart) return;
     if (!child.material) return;
 
     const materials = Array.isArray(child.material)
@@ -391,6 +439,7 @@ function setObjectLocked(object, locked) {
 function toggleSelectedLock() {
   if (!state.selected) return;
   setObjectLocked(state.selected, !isLocked(state.selected));
+  recordHistory("Bloquear objeto");
 }
 
 function setProjectMessage(message, tone = "neutral") {
@@ -509,6 +558,524 @@ function toggleOneSidedScale() {
   );
 }
 
+
+const OUTLINE_EXCLUDED_TYPES = new Set([
+  "palm",
+  "tree",
+  "shrub",
+  "water",
+  "lamp",
+  "fountain",
+  "bridge",
+  "archedBridge",
+  "wallLamp",
+]);
+
+function objectSupportsOutline(object) {
+  if (!object) return false;
+  if (isBuilding(object)) return true;
+  if (object.userData?.kind === "vegetation") return false;
+  if (OUTLINE_EXCLUDED_TYPES.has(object.userData?.propType)) return false;
+  return true;
+}
+
+function getDefaultOutlineStrength(object) {
+  if (isBuilding(object)) return 0.42;
+  const type = object?.userData?.propType;
+  if (type === "path" || type === "lowWall" || type === "railing") return 0.34;
+  return 0.38;
+}
+
+function ensureObjectOutlines(object) {
+  if (!object) return [];
+  if (!objectSupportsOutline(object)) {
+    object.userData.outlineCapable = false;
+    object.userData.outlineEnabled = false;
+    object.userData.outlineParts = [];
+    return [];
+  }
+
+  object.userData.outlineCapable = true;
+  if (object.userData.outlineEnabled === undefined) {
+    object.userData.outlineEnabled = true;
+  }
+
+  if (!Number.isFinite(Number(object.userData.outlineStrength))) {
+    object.userData.outlineStrength = getDefaultOutlineStrength(object);
+  }
+
+  if (Array.isArray(object.userData.outlineParts) && object.userData.outlineParts.length) {
+    return object.userData.outlineParts;
+  }
+
+  const parts = [];
+
+  if (isBuilding(object)) {
+    for (const child of object.children) {
+      if (child.userData?.isOutlinePart) {
+        child.userData.editorMaterialLocal = true;
+        parts.push(child);
+      }
+    }
+
+    object.userData.outlineParts = parts;
+    return parts;
+  }
+
+  object.traverse((child) => {
+    if (!child?.isMesh || !child.geometry || child.userData?.isOutlinePart) return;
+
+    const edges = new THREE.EdgesGeometry(child.geometry);
+    if (!edges.attributes?.position || !edges.attributes.position.count) {
+      edges.dispose?.();
+      return;
+    }
+
+    const line = new THREE.LineSegments(
+      edges,
+      new THREE.LineBasicMaterial({
+        color: BUILDING_EDGE_COLOR,
+        transparent: true,
+        opacity: 0.36,
+        depthTest: true,
+        depthWrite: false,
+        toneMapped: false,
+      })
+    );
+
+    line.userData.isOutlinePart = true;
+    line.userData.editorMaterialLocal = true;
+    line.raycast = () => {};
+    line.renderOrder = 12;
+    child.add(line);
+    parts.push(line);
+  });
+
+  object.userData.outlineParts = parts;
+  return parts;
+}
+
+function rebuildObjectOutlines(object) {
+  if (!object) return;
+
+  if (Array.isArray(object.userData.outlineParts)) {
+    for (const part of object.userData.outlineParts) {
+      part.parent?.remove(part);
+      part.geometry?.dispose?.();
+      const materials = Array.isArray(part.material) ? part.material : [part.material];
+      for (const material of materials) material?.dispose?.();
+    }
+  }
+
+  object.userData.outlineParts = [];
+  ensureObjectOutlines(object);
+  applyObjectOutlineStyle(object, object === state.selected);
+}
+
+function applyObjectOutlineStyle(object, isSelected = false) {
+  if (!object) return;
+  const parts = ensureObjectOutlines(object);
+  const capable = Boolean(object.userData.outlineCapable);
+  const enabled = capable && object.userData.outlineEnabled !== false;
+  const strength = clamp(
+    Number(object.userData.outlineStrength) || getDefaultOutlineStrength(object),
+    0,
+    1
+  );
+  const opacity = enabled ? clamp(isSelected ? Math.max(strength, 0.82) : strength, 0, 1) : 0;
+  const color = isSelected ? SELECTED_EDGE_COLOR : BUILDING_EDGE_COLOR;
+
+  for (const line of parts) {
+    const materials = Array.isArray(line.material) ? line.material : [line.material];
+    for (const material of materials) {
+      material.color.setHex(color);
+      material.opacity = opacity;
+      material.transparent = opacity < 0.999;
+      material.depthTest = true;
+      material.depthWrite = false;
+      material.needsUpdate = true;
+    }
+
+    line.visible = opacity > 0.01;
+  }
+}
+
+function refreshOutlineStates() {
+  for (const object of state.objects) {
+    applyObjectOutlineStyle(object, object === state.selected);
+  }
+}
+
+function makePositionNumberInput(axisLabel) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = axisLabel === "Y" ? "-5" : "-70";
+  input.max = axisLabel === "Y" ? "40" : "70";
+  input.step = "0.25";
+  input.inputMode = "decimal";
+  input.className = "axis-number-input";
+  input.setAttribute("aria-label", `Posición ${axisLabel}`);
+  return input;
+}
+
+function injectPositionNumberInputs() {
+  const map = [
+    [positionXValue, "X"],
+    [positionYValue, "Y"],
+    [positionZValue, "Z"],
+  ];
+
+  for (const [valueNode, axis] of map) {
+    if (!valueNode || valueNode.parentElement?.querySelector(".axis-number-input")) continue;
+    const wrap = document.createElement("span");
+    wrap.className = "slider-head-side";
+    const input = makePositionNumberInput(axis);
+    wrap.append(input, valueNode);
+    valueNode.parentElement.appendChild(wrap);
+
+    if (axis === "X") positionXNumberInput = input;
+    if (axis === "Y") positionYNumberInput = input;
+    if (axis === "Z") positionZNumberInput = input;
+  }
+}
+
+function injectHistoryToolbar() {
+  const host = document.querySelector(".topbar");
+  const modeToolbar = document.querySelector(".mode-toolbar");
+  if (!host || !modeToolbar || host.querySelector(".history-toolbar")) return;
+
+  const bar = document.createElement("div");
+  bar.className = "history-toolbar";
+  bar.innerHTML = `
+    <button type="button" class="history-button" id="historyUndo" title="Deshacer (Ctrl/Cmd + Z)">↶</button>
+    <button type="button" class="history-button" id="historyRedo" title="Rehacer (Ctrl/Cmd + Shift + Z)">↷</button>
+  `;
+  modeToolbar.insertAdjacentElement("afterend", bar);
+
+  historyUndoButton = bar.querySelector("#historyUndo");
+  historyRedoButton = bar.querySelector("#historyRedo");
+
+  historyUndoButton?.addEventListener("click", undoHistory);
+  historyRedoButton?.addEventListener("click", redoHistory);
+  updateHistoryUi();
+}
+
+function injectOutlineControls() {
+  if (!propertiesContent || propertiesContent.querySelector("#outlineControls")) return;
+
+  const lockedNoteNode = lockedNote;
+  const label = document.createElement("div");
+  label.className = "section-label";
+  label.textContent = "Contorno";
+
+  const wrap = document.createElement("div");
+  wrap.id = "outlineControls";
+  wrap.className = "outline-controls hidden";
+  wrap.innerHTML = `
+    <button type="button" class="mini-switch outline-toggle" id="objectOutlineToggle" aria-checked="true">Contorno</button>
+    <label class="slider-field compact-slider">
+      <span class="slider-field-head">
+        <span>Intensidad del contorno</span>
+        <strong id="objectOutlineStrengthValue">40%</strong>
+      </span>
+      <input id="objectOutlineStrength" type="range" min="0" max="100" step="5" value="40" />
+    </label>
+  `;
+
+  lockedNoteNode?.before(label, wrap);
+  outlineControlsWrap = wrap;
+  objectOutlineToggle = wrap.querySelector("#objectOutlineToggle");
+  objectOutlineStrengthInput = wrap.querySelector("#objectOutlineStrength");
+  objectOutlineStrengthValue = wrap.querySelector("#objectOutlineStrengthValue");
+
+  objectOutlineToggle?.addEventListener("click", () => {
+    const object = state.selected;
+    if (!object || !object.userData.outlineCapable) return;
+    object.userData.outlineEnabled = !(object.userData.outlineEnabled !== false);
+    applyObjectOutlineStyle(object, true);
+    updateOutlineControls();
+    recordHistory("Cambiar contorno");
+  });
+
+  objectOutlineStrengthInput?.addEventListener("input", (event) => {
+    const object = state.selected;
+    if (!object || !object.userData.outlineCapable) return;
+    object.userData.outlineStrength = clamp(Number(event.target.value) / 100, 0, 1);
+    applyObjectOutlineStyle(object, true);
+    updateOutlineControls();
+  });
+
+  objectOutlineStrengthInput?.addEventListener("change", () => {
+    recordHistory("Intensidad de contorno");
+  });
+}
+
+function injectViewExtras() {
+  const viewContent = document.querySelector(".view-content");
+  if (!viewContent || viewContent.querySelector("#axisLabelsToggle")) return;
+
+  const section = document.createElement("div");
+  section.className = "view-extras";
+  section.innerHTML = `
+    <div class="section-label">Guías</div>
+    <div class="view-extra-grid">
+      <button type="button" class="mini-switch" id="axisLabelsToggle" aria-checked="true">Ejes X / Y / Z</button>
+      <button type="button" class="mini-switch" id="compassToggle" aria-checked="true">Mini brújula</button>
+    </div>
+  `;
+  viewContent.appendChild(section);
+
+  axisLabelsToggle = section.querySelector("#axisLabelsToggle");
+  compassToggle = section.querySelector("#compassToggle");
+
+  axisLabelsToggle?.addEventListener("click", () => {
+    state.showAxisLabels = !state.showAxisLabels;
+    updateViewExtrasUi();
+    updateAxisLabels();
+  });
+
+  compassToggle?.addEventListener("click", () => {
+    state.showCompass = !state.showCompass;
+    updateViewExtrasUi();
+    updateCompass();
+  });
+
+  updateViewExtrasUi();
+}
+
+function injectAxisOverlays() {
+  if (!workspace || workspace.querySelector(".axis-label-layer")) return;
+}
+
+function installEnhancedUi() {
+  injectPositionNumberInputs();
+  injectHistoryToolbar();
+  injectOutlineControls();
+  injectViewExtras();
+
+  if (!axisLabelsLayer) {
+    axisLabelsLayer = document.createElement("div");
+    axisLabelsLayer.className = "axis-label-layer hidden";
+    axisLabelsLayer.innerHTML = `
+      <span class="axis-chip axis-x">X</span>
+      <span class="axis-chip axis-y">Y</span>
+      <span class="axis-chip axis-z">Z</span>
+    `;
+    workspace.appendChild(axisLabelsLayer);
+    [axisLabelX, axisLabelY, axisLabelZ] = axisLabelsLayer.querySelectorAll(".axis-chip");
+  }
+
+  if (!compassCanvas) {
+    compassCanvas = document.createElement("canvas");
+    compassCanvas.className = "mini-compass";
+    compassCanvas.width = 84;
+    compassCanvas.height = 84;
+    workspace.appendChild(compassCanvas);
+    compassCtx = compassCanvas.getContext("2d");
+  }
+
+  const pairInput = (slider, numberInput) => {
+    if (!slider || !numberInput) return;
+    slider.addEventListener("input", () => {
+      numberInput.value = slider.value;
+    });
+    numberInput.addEventListener("input", () => {
+      slider.value = numberInput.value;
+      applyPositionFromSliders();
+    });
+    numberInput.addEventListener("change", () => {
+      applyPositionFromSliders();
+      recordHistory("Mover objeto");
+    });
+  };
+
+  pairInput(positionXInput, positionXNumberInput);
+  pairInput(positionYInput, positionYNumberInput);
+  pairInput(positionZInput, positionZNumberInput);
+
+  updateViewExtrasUi();
+}
+
+function updateOutlineControls() {
+  const object = state.selected;
+  if (!outlineControlsWrap || !objectOutlineToggle || !objectOutlineStrengthInput || !objectOutlineStrengthValue) return;
+
+  const capable = Boolean(object && object.userData?.outlineCapable);
+  outlineControlsWrap.classList.toggle("hidden", !capable);
+  const labelNode = outlineControlsWrap.previousElementSibling;
+  if (labelNode?.classList.contains("section-label")) {
+    labelNode.classList.toggle("hidden", !capable);
+  }
+
+  if (!capable) return;
+
+  const enabled = object.userData.outlineEnabled !== false;
+  const pct = Math.round((Number(object.userData.outlineStrength) || getDefaultOutlineStrength(object)) * 100);
+  objectOutlineToggle.setAttribute("aria-checked", String(enabled));
+  objectOutlineStrengthInput.value = String(pct);
+  objectOutlineStrengthValue.textContent = `${pct}%`;
+  objectOutlineStrengthInput.disabled = !enabled;
+}
+
+function updateViewExtrasUi() {
+  axisLabelsToggle?.setAttribute("aria-checked", String(state.showAxisLabels));
+  compassToggle?.setAttribute("aria-checked", String(state.showCompass));
+  if (compassCanvas) {
+    compassCanvas.classList.toggle("hidden", !state.showCompass);
+  }
+}
+
+function getObjectWorldCenter(object) {
+  object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(object);
+  return box.getCenter(new THREE.Vector3());
+}
+
+function updateAxisLabels() {
+  if (!axisLabelsLayer || !renderer || !camera) return;
+  const object = state.selected;
+
+  if (!state.showAxisLabels || !object) {
+    axisLabelsLayer.classList.add("hidden");
+    return;
+  }
+
+  const center = getObjectWorldCenter(object);
+  const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
+  const spread = Math.max(1.1, Math.max(size.x, size.y, size.z) * 0.65 + 0.5);
+
+  const points = [
+    [axisLabelX, center.clone().add(new THREE.Vector3(spread, 0, 0))],
+    [axisLabelY, center.clone().add(new THREE.Vector3(0, spread, 0))],
+    [axisLabelZ, center.clone().add(new THREE.Vector3(0, 0, spread))],
+  ];
+
+  axisLabelsLayer.classList.remove("hidden");
+
+  for (const [node, point] of points) {
+    const projected = projectWorldToViewport(point);
+    node.style.transform = `translate(${projected.x}px, ${projected.y}px)`;
+  }
+}
+
+function drawCompassAxis(label, color, vector) {
+  if (!compassCtx) return;
+  const cx = compassCanvas.width / 2;
+  const cy = compassCanvas.height / 2;
+  const scale = 22;
+  compassCtx.strokeStyle = color;
+  compassCtx.fillStyle = color;
+  compassCtx.lineWidth = 2;
+  compassCtx.beginPath();
+  compassCtx.moveTo(cx, cy);
+  compassCtx.lineTo(cx + vector.x * scale, cy - vector.y * scale);
+  compassCtx.stroke();
+  compassCtx.font = "11px Inter, sans-serif";
+  compassCtx.fillText(label, cx + vector.x * (scale + 6) - 4, cy - vector.y * (scale + 6) + 4);
+}
+
+function updateCompass() {
+  if (!compassCanvas || !compassCtx) return;
+  updateViewExtrasUi();
+  if (!state.showCompass) return;
+
+  compassCtx.clearRect(0, 0, compassCanvas.width, compassCanvas.height);
+  const cx = compassCanvas.width / 2;
+  const cy = compassCanvas.height / 2;
+
+  compassCtx.fillStyle = "rgba(255,255,255,.88)";
+  compassCtx.strokeStyle = "rgba(23,23,23,.12)";
+  compassCtx.lineWidth = 1;
+  compassCtx.beginPath();
+  compassCtx.arc(cx, cy, 30, 0, Math.PI * 2);
+  compassCtx.fill();
+  compassCtx.stroke();
+
+  const inv = camera.quaternion.clone().invert();
+  drawCompassAxis("X", "#cf5c5c", new THREE.Vector3(1, 0, 0).applyQuaternion(inv));
+  drawCompassAxis("Y", "#4e9661", new THREE.Vector3(0, 1, 0).applyQuaternion(inv));
+  drawCompassAxis("Z", "#5e7fd5", new THREE.Vector3(0, 0, 1).applyQuaternion(inv));
+}
+
+function updateOverlayWidgets() {
+  updateAxisLabels();
+  updateCompass();
+}
+
+function captureHistorySnapshot() {
+  return {
+    objects: state.objects.map(serializeEditorObject),
+    nextBuildingNumber: state.nextBuildingNumber,
+    nextPropNumbers: { ...state.nextPropNumbers },
+    selectedId: state.selected?.userData?.id || null,
+  };
+}
+
+function snapshotsEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function updateHistoryUi() {
+  if (historyUndoButton) {
+    historyUndoButton.disabled = state.historyIndex <= 0;
+  }
+  if (historyRedoButton) {
+    historyRedoButton.disabled = state.historyIndex >= state.history.length - 1;
+  }
+}
+
+function recordHistory(_label = "") {
+  if (state.historyMuted) return;
+  const snapshot = captureHistorySnapshot();
+  const current = state.history[state.historyIndex];
+  if (current && snapshotsEqual(current, snapshot)) {
+    updateHistoryUi();
+    return;
+  }
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  state.history.push(snapshot);
+  state.historyIndex = state.history.length - 1;
+  updateHistoryUi();
+}
+
+function resetHistoryToCurrent() {
+  state.history = [];
+  state.historyIndex = -1;
+  recordHistory("Reset history");
+}
+
+function applyHistorySnapshot(snapshot) {
+  if (!snapshot) return;
+  state.historyMuted = true;
+  clearEditorObjects();
+  for (const record of snapshot.objects) {
+    restoreProjectObject(record);
+  }
+  state.nextBuildingNumber = snapshot.nextBuildingNumber || 1;
+  state.nextPropNumbers = { ...(snapshot.nextPropNumbers || {}) };
+  const selected = state.objects.find((item) => item.userData.id === snapshot.selectedId);
+  if (selected) {
+    selectObject(selected);
+  } else {
+    deselectObject();
+  }
+  refreshOutlineStates();
+  state.historyMuted = false;
+  updateHistoryUi();
+}
+
+function undoHistory() {
+  if (state.historyIndex <= 0) return;
+  state.historyIndex -= 1;
+  applyHistorySnapshot(state.history[state.historyIndex]);
+}
+
+function redoHistory() {
+  if (state.historyIndex >= state.history.length - 1) return;
+  state.historyIndex += 1;
+  applyHistorySnapshot(state.history[state.historyIndex]);
+}
+
 function magnetizePointXZ(x, z) {
   return magnetizeXZ(
     x,
@@ -600,12 +1167,17 @@ function serializeEditorObject(object) {
     propType: isBuilding(object)
       ? null
       : object.userData.propType,
+    id: object.userData.id,
     name: object.name,
     position: object.position.toArray(),
     scale: object.scale.toArray(),
     rotationY: object.rotation.y,
     locked: isLocked(object),
     opacity: getObjectOpacity(object),
+    outlineEnabled:
+      object.userData.outlineEnabled !== false,
+    outlineStrength:
+      Number(object.userData.outlineStrength) || getDefaultOutlineStrength(object),
     params:
       object.userData.params
         ? { ...object.userData.params }
@@ -626,6 +1198,8 @@ function serializeProject() {
       groundSnapEnabled: state.groundSnapEnabled,
       groundSnapThreshold: state.groundSnapThreshold,
       oneSidedScaleEnabled: state.oneSidedScaleEnabled,
+      showAxisLabels: state.showAxisLabels,
+      showCompass: state.showCompass,
       gridVisible: state.gridVisible,
       gridOpacity: state.gridOpacity,
       groundOpacity: state.groundOpacity,
@@ -650,7 +1224,7 @@ function disposeEditorObject(object) {
   scene.remove(object);
 
   object.traverse((child) => {
-    if (isBuilding(object)) {
+    if (isBuilding(object) || child.userData?.isOutlinePart) {
       child.geometry?.dispose?.();
     }
 
@@ -737,13 +1311,21 @@ function restoreProjectObject(record) {
     record.scale[2]
   );
 
+  object.userData.id = record.id || object.userData.id;
   object.userData.locked =
     record.locked;
+
+  object.userData.outlineEnabled =
+    record.outlineEnabled !== false;
+  object.userData.outlineStrength =
+    Number(record.outlineStrength) || getDefaultOutlineStrength(object);
 
   setObjectOpacity(
     object,
     record.opacity
   );
+
+  rebuildObjectOutlines(object);
 
   return object;
 }
@@ -806,6 +1388,11 @@ function restoreProjectSettings(project) {
     project.settings.oneSidedScaleEnabled
   );
 
+  state.showAxisLabels =
+    project.settings.showAxisLabels !== false;
+  state.showCompass =
+    project.settings.showCompass !== false;
+
   state.referenceImage = {
     dataUrl:
       project.settings.referenceImage?.dataUrl || null,
@@ -845,6 +1432,8 @@ function restoreProjectSettings(project) {
   setActiveViewButton(
     project.settings.viewMode
   );
+  updateViewExtrasUi();
+  updateOverlayWidgets();
 }
 
 function restoreProject(project) {
@@ -855,6 +1444,7 @@ function restoreProject(project) {
     );
   }
 
+  state.historyMuted = true;
   clearEditorObjects();
 
   for (const record of project.objects) {
@@ -874,6 +1464,9 @@ function restoreProject(project) {
   }
 
   refreshSceneList();
+  refreshOutlineStates();
+  state.historyMuted = false;
+  resetHistoryToCurrent();
 }
 
 function saveProjectFile() {
@@ -978,6 +1571,8 @@ function createScene() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   viewport.appendChild(renderer.domElement);
 
+  installEnhancedUi();
+
   createLights();
   createGround();
   createGrid();
@@ -1033,6 +1628,7 @@ function createScene() {
   hideAlignmentGuides();
 
   // Siempre aparece un objeto de prueba para comprobar que app.js sí cargó.
+  state.historyMuted = true;
   createBuilding({
     name: "Edificio 1",
     width: 8,
@@ -1044,6 +1640,8 @@ function createScene() {
     select: true,
   });
   state.nextBuildingNumber = 2;
+  state.historyMuted = false;
+  resetHistoryToCurrent();
 
   statusDot?.classList.add("ready");
   if (statusText) statusText.textContent = "Constructor 3D funcionando";
@@ -1179,6 +1777,7 @@ function createTransformControls() {
 
   transformControls.addEventListener("mouseDown", () => {
     mapControls.enabled = false;
+    state.pendingTransformChange = false;
 
     oneSidedScaleController?.beginDrag(
       transformControls.axis
@@ -1192,11 +1791,18 @@ function createTransformControls() {
   transformControls.addEventListener("mouseUp", () => {
     mapControls.enabled = true;
     oneSidedScaleController?.endDrag();
+    if (state.pendingTransformChange) {
+      if (state.selected) rebuildObjectOutlines(state.selected);
+      recordHistory("Transformar objeto");
+      state.pendingTransformChange = false;
+    }
   });
 
   transformControls.addEventListener("objectChange", () => {
     oneSidedScaleController?.apply();
     applySelectionConstraints();
+    state.pendingTransformChange = true;
+    if (state.selected) rebuildObjectOutlines(state.selected);
     updateSelectionBox();
     updatePropertiesFromSelection();
   });
@@ -1242,16 +1848,27 @@ function createBuilding({
       color: BUILDING_EDGE_COLOR,
       transparent: true,
       opacity: 0.42,
+      depthTest: true,
+      depthWrite: false,
+      toneMapped: false,
     })
   );
+  edges.userData.isOutlinePart = true;
+  edges.userData.editorMaterialLocal = true;
   edges.raycast = () => {};
   object.add(edges);
+  object.userData.outlineCapable = true;
+  object.userData.outlineEnabled = true;
+  object.userData.outlineStrength = 0.42;
+  object.userData.outlineParts = [edges];
 
   scene.add(object);
   state.objects.push(object);
   refreshSceneList();
+  applyObjectOutlineStyle(object, false);
 
   if (select) selectObject(object);
+  recordHistory("Crear edificio");
   return object;
 }
 
@@ -1287,8 +1904,11 @@ function createEditorProp(type, {
 
   scene.add(object);
   state.objects.push(object);
+  ensureObjectOutlines(object);
+  applyObjectOutlineStyle(object, false);
   refreshSceneList();
   if (select) selectObject(object);
+  recordHistory("Crear objeto");
   return object;
 }
 
@@ -1419,6 +2039,10 @@ function duplicateSelectedObject() {
     getObjectOpacity(source)
   );
 
+  clone.userData.outlineEnabled = source.userData.outlineEnabled !== false;
+  clone.userData.outlineStrength = Number(source.userData.outlineStrength) || getDefaultOutlineStrength(source);
+  rebuildObjectOutlines(clone);
+
   selectObject(clone);
   return clone;
 }
@@ -1435,31 +2059,24 @@ function deleteSelectedObject() {
   removeSelectionBox();
   refreshSceneList();
   updatePropertiesFromSelection();
+  recordHistory("Eliminar objeto");
 }
 
 function createSelectionBox(object) {
-  removeSelectionBox();
-  selectionBox = new THREE.BoxHelper(object, SELECTED_EDGE_COLOR);
-  if (selectionBox.material) {
-    selectionBox.material.transparent = true;
-    selectionBox.material.opacity = 0.92;
-    selectionBox.material.depthTest = false;
-  }
-  selectionBox.renderOrder = 999;
-  selectionBox.raycast = () => {};
-  scene.add(selectionBox);
+  selectionBox = null;
+  refreshOutlineStates();
+  updateOverlayWidgets();
 }
 
 function updateSelectionBox() {
-  selectionBox?.update();
+  refreshOutlineStates();
+  updateOverlayWidgets();
 }
 
 function removeSelectionBox() {
-  if (!selectionBox) return;
-  scene.remove(selectionBox);
-  selectionBox.geometry?.dispose?.();
-  selectionBox.material?.dispose?.();
   selectionBox = null;
+  refreshOutlineStates();
+  updateOverlayWidgets();
 }
 
 function setTransformMode(mode) {
@@ -1471,6 +2088,13 @@ function setTransformMode(mode) {
 
   state.transformMode = mode;
   transformControls.setMode(mode);
+
+  transformControls.setRotationSnap(
+    state.ctrlRotationSnap
+      ? THREE.MathUtils.degToRad(45)
+      : null
+  );
+
   configureTransformForSelection();
 
   for (const button of modeButtons) {
@@ -1703,6 +2327,10 @@ function updatePropertiesFromSelection() {
   positionYValue.textContent = formatMeters(object.position.y);
   positionZValue.textContent = formatMeters(object.position.z);
 
+  if (positionXNumberInput) positionXNumberInput.value = round2(object.position.x);
+  if (positionYNumberInput) positionYNumberInput.value = round2(object.position.y);
+  if (positionZNumberInput) positionZNumberInput.value = round2(object.position.z);
+
   const movableY = canMoveY(object);
   positionYField.classList.toggle(
     "hidden",
@@ -1743,6 +2371,7 @@ function updatePropertiesFromSelection() {
   }
 
   lockedNote.classList.toggle("hidden", !locked);
+  updateOutlineControls();
 }
 
 function getEditableDimensions(object) {
@@ -1776,6 +2405,7 @@ function applyDimensionsFromInputs() {
 
   setEditableDimensions(object, width, height, depth);
   applySelectionConstraints();
+  rebuildObjectOutlines(object);
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
@@ -1827,6 +2457,10 @@ function applyPositionFromSliders() {
   positionYValue.textContent = formatMeters(object.position.y);
   positionZValue.textContent = formatMeters(object.position.z);
 
+  if (positionXNumberInput) positionXNumberInput.value = round2(object.position.x);
+  if (positionYNumberInput) positionYNumberInput.value = round2(object.position.y);
+  if (positionZNumberInput) positionZNumberInput.value = round2(object.position.z);
+
   updateSelectionBox();
 }
 
@@ -1853,6 +2487,7 @@ function applyUniformSize(percentage) {
   state.lastUniformScale = scale;
   applySelectionConstraints();
   uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
+  rebuildObjectOutlines(object);
   updateSelectionBox();
 }
 
@@ -1894,6 +2529,7 @@ function applyStairSteps(value) {
   stairStepsValue.textContent =
     String(steps);
 
+  rebuildObjectOutlines(object);
   updateSelectionBox();
 }
 
@@ -2316,19 +2952,31 @@ function installEvents() {
     refreshSceneList();
   });
 
+  objectNameInput.addEventListener("change", () => {
+    if (state.selected) recordHistory("Renombrar objeto");
+  });
+
   for (const input of [widthInput, heightInput, depthInput]) {
-    input.addEventListener("change", applyDimensionsFromInputs);
+    input.addEventListener("change", () => {
+      applyDimensionsFromInputs();
+      recordHistory("Cambiar dimensiones");
+    });
   }
 
   for (const input of [positionXInput, positionYInput, positionZInput]) {
     input.addEventListener("input", applyPositionFromSliders);
+    input.addEventListener("change", () => recordHistory("Mover objeto"));
   }
 
-  rotationYInput.addEventListener("change", applyRotationFromInput);
+  rotationYInput.addEventListener("change", () => {
+    applyRotationFromInput();
+    recordHistory("Rotar objeto");
+  });
 
   uniformSizeInput.addEventListener("input", (event) => {
     applyUniformSize(Number(event.target.value));
   });
+  uniformSizeInput.addEventListener("change", () => recordHistory("Escalar objeto"));
 
   stairStepsInput.addEventListener(
     "input",
@@ -2338,6 +2986,7 @@ function installEvents() {
       );
     }
   );
+  stairStepsInput.addEventListener("change", () => recordHistory("Editar escalera"));
 
   duplicateButton.addEventListener("click", duplicateSelectedObject);
   deleteButton.addEventListener("click", deleteSelectedObject);
@@ -2356,6 +3005,9 @@ function installEvents() {
     const percentage = Number(event.target.value);
     setObjectOpacity(state.selected, percentage / 100);
     objectOpacityValue.textContent = `${percentage}%`;
+  });
+  objectOpacityInput.addEventListener("change", () => {
+    if (state.selected) recordHistory("Cambiar opacidad");
   });
 
   perspectiveViewButton.addEventListener("click", setPerspectiveView);
@@ -2517,8 +3169,29 @@ function installEvents() {
   });
 
   window.addEventListener("keydown", (event) => {
-    if (isEditingField()) return;
     const key = event.key.toLowerCase();
+
+    if (event.key === "Control") {
+      updateCtrlRotationSnap(true);
+    }
+
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        redoHistory();
+      } else {
+        undoHistory();
+      }
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && key === "y") {
+      event.preventDefault();
+      redoHistory();
+      return;
+    }
+
+    if (isEditingField()) return;
 
     if (key === "w") setTransformMode("translate");
     if (key === "e") setTransformMode("rotate");
@@ -2540,6 +3213,17 @@ function installEvents() {
       event.preventDefault();
       duplicateSelectedObject();
     }
+  });
+
+
+  window.addEventListener("keyup", (event) => {
+    if (event.key === "Control") {
+      updateCtrlRotationSnap(false);
+    }
+  });
+
+  window.addEventListener("blur", () => {
+    updateCtrlRotationSnap(false);
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -2584,6 +3268,7 @@ function startAnimation() {
     }
 
     selectionBox?.update();
+    updateOverlayWidgets();
     renderer.render(scene, camera);
   };
 

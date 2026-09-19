@@ -1,21 +1,16 @@
-# Resort Map Builder · Parte 6.5.1
+# Resort Map Builder · Parte 6.7
 
-Corrección puntual de la Parte 6.5.
+Esta versión parte de la 6.6 y conserva toda la funcionalidad anterior.
 
-## Problema corregido
+## Nuevo: rotación magnética con Control
 
-Al orbitar en teléfono, el objetivo de la cámara podía adquirir un desplazamiento vertical.
-En ciertos ángulos eso colocaba la cámara virtual por debajo del plano, haciendo que el
-suelo pareciera una capa delante de los edificios.
+En PC, mientras un objeto está en modo **Rotar**:
 
-## Cambios
+- Rotación normal: completamente libre.
+- Manteniendo presionada la tecla **Control**: la rotación se engancha en incrementos de **45°**.
+- Esto incluye 0°, 45°, 90°, 135°, 180°, 225°, 270° y 315°.
+- Al soltar Control, la rotación vuelve inmediatamente a ser libre.
+- Funciona con edificios y con todos los demás objetos que usan TransformControls.
 
-- La cámara ya no puede cruzar por debajo del plano.
-- El desplazamiento con dos dedos se mantiene sobre X/Z, sin deriva vertical.
-- El suelo solo se renderiza por su cara superior.
-- La imagen guía también solo se renderiza desde la parte superior.
-- El suelo y la retícula no escriben profundidad de forma que oculten objetos transparentes.
-- La opacidad del plano actualiza correctamente su comportamiento de profundidad.
-- La atracción al suelo ahora usa la base real de la geometría, no solo el punto central.
-- Todo lo demás de la 6.5 se conserva: gestos, botón flotante, PC, imagen guía,
-  imanes, guardado/carga, props y controles.
+No se modificó la navegación táctil móvil, el guardado/carga, los contornos, undo/redo,
+imagen guía, imanes, cámara ni el resto de herramientas.

@@ -1,5 +1,5 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 3;
+const VERSION = 4;
 const MAX_OBJECTS = 10000;
 
 function finiteNumber(value, fallback = 0) {
@@ -52,7 +52,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, 2, VERSION].includes(Number(input.version))) {
+  if (![1, 2, 3, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -108,11 +108,23 @@ export function validateProjectDocument(
       scale: vector3(item.scale, [1, 1, 1]).map((value) =>
         Math.max(0.001, Math.abs(value))
       ),
+      id:
+        typeof item.id === "string" && item.id.trim()
+          ? item.id.trim().slice(0, 120)
+          : null,
       rotationY: finiteNumber(item.rotationY),
       locked: Boolean(item.locked),
       opacity: Math.min(
         1,
         Math.max(0.15, finiteNumber(item.opacity, 1))
+      ),
+      outlineEnabled:
+        item.outlineEnabled === undefined
+          ? true
+          : Boolean(item.outlineEnabled),
+      outlineStrength: Math.min(
+        1,
+        Math.max(0, finiteNumber(item.outlineStrength, 0.4))
       ),
       params:
         item.params && typeof item.params === "object"
@@ -172,6 +184,14 @@ export function validateProjectDocument(
         Math.max(0, finiteNumber(settings.groundSnapThreshold, 0.15))
       ),
       oneSidedScaleEnabled: Boolean(settings.oneSidedScaleEnabled),
+      showAxisLabels:
+        settings.showAxisLabels === undefined
+          ? true
+          : Boolean(settings.showAxisLabels),
+      showCompass:
+        settings.showCompass === undefined
+          ? true
+          : Boolean(settings.showCompass),
       gridVisible:
         settings.gridVisible === undefined
           ? true
