@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7.1";
-import { setupMobilePanels } from "./ui.js?v=6.7.1";
-import { createPlacementController } from "./placement.js?v=6.7.1";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.7.1";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7.2";
+import { setupMobilePanels } from "./ui.js?v=6.7.2";
+import { createPlacementController } from "./placement.js?v=6.7.2";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.7.2";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.7.1";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.7.1";
+} from "./snap.js?v=6.7.2";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.7.2";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.7.1";
+} from "./project-io.js?v=6.7.2";
 
 window.__RMB_READY__ = false;
 
@@ -414,6 +414,8 @@ function setObjectOpacity(object, value) {
       material.needsUpdate = true;
     }
   });
+
+  applyObjectOutlineStyle(object, object === state.selected);
 }
 
 function setObjectLocked(object, locked) {
@@ -571,6 +573,9 @@ const OUTLINE_EXCLUDED_TYPES = new Set([
   "wallLamp",
 ]);
 
+const OUTLINE_THRESHOLD_ANGLE = 18;
+const OUTLINE_SCALE_EPSILON = 1.00025;
+
 function objectSupportsOutline(object) {
   if (!object) return false;
   if (isBuilding(object)) return true;
@@ -582,16 +587,85 @@ function objectSupportsOutline(object) {
 function getDefaultOutlineStrength(object) {
   if (isBuilding(object)) return 0.42;
   const type = object?.userData?.propType;
-  if (type === "path" || type === "lowWall" || type === "railing") return 0.34;
+  if (type === "path") return 0.36;
+  if (type === "lowWall" || type === "railing") return 0.40;
+  if (type === "window" || type === "door") return 0.44;
   return 0.38;
+}
+
+function disposeOutlinePart(part) {
+  if (!part) return;
+  part.parent?.remove(part);
+  part.geometry?.dispose?.();
+  const materials = Array.isArray(part.material)
+    ? part.material
+    : [part.material];
+  for (const material of materials) {
+    material?.dispose?.();
+  }
+}
+
+function removeObjectOutlines(object) {
+  if (!object) return;
+  const parts = Array.isArray(object.userData.outlineParts)
+    ? [...object.userData.outlineParts]
+    : [];
+  for (const part of parts) {
+    disposeOutlinePart(part);
+  }
+  object.userData.outlineParts = [];
+}
+
+function createOutlineForMesh(mesh) {
+  if (!mesh?.isMesh || !mesh.geometry) return null;
+
+  const existing = mesh.children.find(
+    (child) => child.userData?.isOutlinePart === true
+  );
+  if (existing) return existing;
+
+  const edgesGeometry = new THREE.EdgesGeometry(
+    mesh.geometry,
+    OUTLINE_THRESHOLD_ANGLE
+  );
+
+  if (!edgesGeometry.attributes?.position?.count) {
+    edgesGeometry.dispose?.();
+    return null;
+  }
+
+  const line = new THREE.LineSegments(
+    edgesGeometry,
+    new THREE.LineBasicMaterial({
+      color: BUILDING_EDGE_COLOR,
+      transparent: true,
+      opacity: 0.38,
+      depthTest: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+  );
+
+  // El contorno vive DENTRO del mismo mesh. Por eso hereda siempre
+  // posición, rotación y escala y no puede quedarse "atrás".
+  line.userData.isOutlinePart = true;
+  line.userData.editorMaterialLocal = true;
+  line.userData.outlineOwnerUuid = mesh.uuid;
+  line.raycast = () => {};
+  line.frustumCulled = false;
+  line.renderOrder = 24;
+  line.scale.setScalar(OUTLINE_SCALE_EPSILON);
+  mesh.add(line);
+  return line;
 }
 
 function ensureObjectOutlines(object) {
   if (!object) return [];
+
   if (!objectSupportsOutline(object)) {
+    removeObjectOutlines(object);
     object.userData.outlineCapable = false;
     object.userData.outlineEnabled = false;
-    object.userData.outlineParts = [];
     return [];
   }
 
@@ -599,56 +673,17 @@ function ensureObjectOutlines(object) {
   if (object.userData.outlineEnabled === undefined) {
     object.userData.outlineEnabled = true;
   }
-
   if (!Number.isFinite(Number(object.userData.outlineStrength))) {
     object.userData.outlineStrength = getDefaultOutlineStrength(object);
   }
 
-  if (Array.isArray(object.userData.outlineParts) && object.userData.outlineParts.length) {
-    return object.userData.outlineParts;
-  }
-
   const parts = [];
-
-  if (isBuilding(object)) {
-    for (const child of object.children) {
-      if (child.userData?.isOutlinePart) {
-        child.userData.editorMaterialLocal = true;
-        parts.push(child);
-      }
-    }
-
-    object.userData.outlineParts = parts;
-    return parts;
-  }
-
   object.traverse((child) => {
-    if (!child?.isMesh || !child.geometry || child.userData?.isOutlinePart) return;
-
-    const edges = new THREE.EdgesGeometry(child.geometry);
-    if (!edges.attributes?.position || !edges.attributes.position.count) {
-      edges.dispose?.();
+    if (!child?.isMesh || !child.geometry || child.userData?.isOutlinePart) {
       return;
     }
-
-    const line = new THREE.LineSegments(
-      edges,
-      new THREE.LineBasicMaterial({
-        color: BUILDING_EDGE_COLOR,
-        transparent: true,
-        opacity: 0.36,
-        depthTest: true,
-        depthWrite: false,
-        toneMapped: false,
-      })
-    );
-
-    line.userData.isOutlinePart = true;
-    line.userData.editorMaterialLocal = true;
-    line.raycast = () => {};
-    line.renderOrder = 12;
-    child.add(line);
-    parts.push(line);
+    const outline = createOutlineForMesh(child);
+    if (outline) parts.push(outline);
   });
 
   object.userData.outlineParts = parts;
@@ -657,23 +692,14 @@ function ensureObjectOutlines(object) {
 
 function rebuildObjectOutlines(object) {
   if (!object) return;
-
-  if (Array.isArray(object.userData.outlineParts)) {
-    for (const part of object.userData.outlineParts) {
-      part.parent?.remove(part);
-      part.geometry?.dispose?.();
-      const materials = Array.isArray(part.material) ? part.material : [part.material];
-      for (const material of materials) material?.dispose?.();
-    }
-  }
-
-  object.userData.outlineParts = [];
+  removeObjectOutlines(object);
   ensureObjectOutlines(object);
   applyObjectOutlineStyle(object, object === state.selected);
 }
 
 function applyObjectOutlineStyle(object, isSelected = false) {
   if (!object) return;
+
   const parts = ensureObjectOutlines(object);
   const capable = Boolean(object.userData.outlineCapable);
   const enabled = capable && object.userData.outlineEnabled !== false;
@@ -682,11 +708,20 @@ function applyObjectOutlineStyle(object, isSelected = false) {
     0,
     1
   );
-  const opacity = enabled ? clamp(isSelected ? Math.max(strength, 0.82) : strength, 0, 1) : 0;
-  const color = isSelected ? SELECTED_EDGE_COLOR : BUILDING_EDGE_COLOR;
+
+  const opacity = enabled
+    ? clamp(isSelected ? Math.max(strength, 0.62) : strength, 0, 1)
+    : 0;
+
+  const color = isSelected
+    ? SELECTED_EDGE_COLOR
+    : BUILDING_EDGE_COLOR;
 
   for (const line of parts) {
-    const materials = Array.isArray(line.material) ? line.material : [line.material];
+    const materials = Array.isArray(line.material)
+      ? line.material
+      : [line.material];
+
     for (const material of materials) {
       material.color.setHex(color);
       material.opacity = opacity;
@@ -702,7 +737,10 @@ function applyObjectOutlineStyle(object, isSelected = false) {
 
 function refreshOutlineStates() {
   for (const object of state.objects) {
-    applyObjectOutlineStyle(object, object === state.selected);
+    applyObjectOutlineStyle(
+      object,
+      object === state.selected
+    );
   }
 }
 
@@ -793,7 +831,7 @@ function injectOutlineControls() {
     <button type="button" class="mini-switch outline-toggle" id="objectOutlineToggle" aria-checked="true">Contorno</button>
     <label class="slider-field compact-slider">
       <span class="slider-field-head">
-        <span>Intensidad del contorno</span>
+        <span>Nitidez / intensidad</span>
         <strong id="objectOutlineStrengthValue">40%</strong>
       </span>
       <input id="objectOutlineStrength" type="range" min="0" max="100" step="5" value="40" />
@@ -930,6 +968,7 @@ function updateOutlineControls() {
   const enabled = object.userData.outlineEnabled !== false;
   const pct = Math.round((Number(object.userData.outlineStrength) || getDefaultOutlineStrength(object)) * 100);
   objectOutlineToggle.setAttribute("aria-checked", String(enabled));
+  objectOutlineToggle.textContent = enabled ? "Contorno · ON" : "Contorno · OFF";
   objectOutlineStrengthInput.value = String(pct);
   objectOutlineStrengthValue.textContent = `${pct}%`;
   objectOutlineStrengthInput.disabled = !enabled;
@@ -943,37 +982,102 @@ function updateViewExtrasUi() {
   }
 }
 
-function getObjectWorldCenter(object) {
-  object.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(object);
-  return box.getCenter(new THREE.Vector3());
+function getTransformOriginWorld(object) {
+  const origin = new THREE.Vector3();
+  object.getWorldPosition(origin);
+  return origin;
+}
+
+function getAxisWorldDirection(axisName, object) {
+  const axis = new THREE.Vector3(
+    axisName === "X" ? 1 : 0,
+    axisName === "Y" ? 1 : 0,
+    axisName === "Z" ? 1 : 0
+  );
+
+  // TransformControls usa espacio local únicamente al escalar.
+  // Mover y rotar están configurados en world space.
+  if (state.transformMode === "scale") {
+    const worldQuaternion = new THREE.Quaternion();
+    object.getWorldQuaternion(worldQuaternion);
+    axis.applyQuaternion(worldQuaternion);
+  }
+
+  return axis.normalize();
+}
+
+function placeAxisLabel(node, axisName, centerWorld, object, visible) {
+  if (!node || !visible) {
+    node?.classList.add("hidden");
+    return;
+  }
+
+  const centerScreen = projectWorldToViewport(centerWorld);
+  const axisWorld = getAxisWorldDirection(axisName, object);
+  const testScreen = projectWorldToViewport(
+    centerWorld.clone().add(axisWorld)
+  );
+
+  let dx = testScreen.x - centerScreen.x;
+  let dy = testScreen.y - centerScreen.y;
+  const length = Math.hypot(dx, dy);
+
+  // Si un eje apunta casi directamente hacia la cámara, su línea proyectada
+  // no tiene una dirección visual útil. Ocultamos solo esa letra.
+  if (length < 3) {
+    node.classList.add("hidden");
+    return;
+  }
+
+  dx /= length;
+  dy /= length;
+
+  const pixelDistance = state.transformMode === "rotate" ? 48 : 54;
+  const x = centerScreen.x + dx * pixelDistance;
+  const y = centerScreen.y + dy * pixelDistance;
+
+  node.classList.remove("hidden");
+  node.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
 }
 
 function updateAxisLabels() {
   if (!axisLabelsLayer || !renderer || !camera) return;
   const object = state.selected;
 
-  if (!state.showAxisLabels || !object) {
+  if (
+    !state.showAxisLabels ||
+    !object ||
+    isLocked(object) ||
+    transformControls.object !== object
+  ) {
     axisLabelsLayer.classList.add("hidden");
     return;
   }
 
-  const center = getObjectWorldCenter(object);
-  const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
-  const spread = Math.max(1.1, Math.max(size.x, size.y, size.z) * 0.65 + 0.5);
-
-  const points = [
-    [axisLabelX, center.clone().add(new THREE.Vector3(spread, 0, 0))],
-    [axisLabelY, center.clone().add(new THREE.Vector3(0, spread, 0))],
-    [axisLabelZ, center.clone().add(new THREE.Vector3(0, 0, spread))],
-  ];
-
+  const centerWorld = getTransformOriginWorld(object);
   axisLabelsLayer.classList.remove("hidden");
 
-  for (const [node, point] of points) {
-    const projected = projectWorldToViewport(point);
-    node.style.transform = `translate(${projected.x}px, ${projected.y}px)`;
-  }
+  placeAxisLabel(
+    axisLabelX,
+    "X",
+    centerWorld,
+    object,
+    transformControls.showX !== false
+  );
+  placeAxisLabel(
+    axisLabelY,
+    "Y",
+    centerWorld,
+    object,
+    transformControls.showY !== false
+  );
+  placeAxisLabel(
+    axisLabelZ,
+    "Z",
+    centerWorld,
+    object,
+    transformControls.showZ !== false
+  );
 }
 
 function drawCompassAxis(label, color, vector) {
@@ -1810,7 +1914,7 @@ function createTransformControls() {
     mapControls.enabled = true;
     oneSidedScaleController?.endDrag();
     if (state.pendingTransformChange) {
-      if (state.selected) rebuildObjectOutlines(state.selected);
+      if (state.selected) applyObjectOutlineStyle(state.selected, true);
       recordHistory("Transformar objeto");
       state.pendingTransformChange = false;
     }
@@ -1820,7 +1924,7 @@ function createTransformControls() {
     oneSidedScaleController?.apply();
     applySelectionConstraints();
     state.pendingTransformChange = true;
-    if (state.selected) rebuildObjectOutlines(state.selected);
+    if (state.selected) applyObjectOutlineStyle(state.selected, true);
     updateSelectionBox();
     updatePropertiesFromSelection();
   });
@@ -1860,30 +1964,12 @@ function createBuilding({
   object.position.set(x, y, z);
   object.rotation.y = rotationY;
 
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(object.geometry),
-    new THREE.LineBasicMaterial({
-      color: BUILDING_EDGE_COLOR,
-      transparent: true,
-      opacity: 0.42,
-      depthTest: true,
-      depthWrite: false,
-      toneMapped: false,
-    })
-  );
-  edges.userData.isOutlinePart = true;
-  edges.userData.editorMaterialLocal = true;
-  edges.raycast = () => {};
-  object.add(edges);
-  object.userData.outlineCapable = true;
-  object.userData.outlineEnabled = true;
-  object.userData.outlineStrength = 0.42;
-  object.userData.outlineParts = [edges];
 
   scene.add(object);
   state.objects.push(object);
-  refreshSceneList();
+  ensureObjectOutlines(object);
   applyObjectOutlineStyle(object, false);
+  refreshSceneList();
 
   if (select) selectObject(object);
   recordHistory("Crear edificio");
@@ -2114,6 +2200,7 @@ function setTransformMode(mode) {
   );
 
   configureTransformForSelection();
+  updateAxisLabels();
 
   for (const button of modeButtons) {
     button.classList.toggle("active", button.dataset.mode === mode);
@@ -2423,7 +2510,7 @@ function applyDimensionsFromInputs() {
 
   setEditableDimensions(object, width, height, depth);
   applySelectionConstraints();
-  rebuildObjectOutlines(object);
+  applyObjectOutlineStyle(object, true);
   updateSelectionBox();
   updatePropertiesFromSelection();
 }
@@ -2505,7 +2592,7 @@ function applyUniformSize(percentage) {
   state.lastUniformScale = scale;
   applySelectionConstraints();
   uniformSizeValue.textContent = `${Math.round(scale * 100)}%`;
-  rebuildObjectOutlines(object);
+  applyObjectOutlineStyle(object, true);
   updateSelectionBox();
 }
 

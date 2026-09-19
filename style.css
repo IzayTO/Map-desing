@@ -1224,20 +1224,27 @@ input:disabled{
 }
 .axis-chip{
   position:absolute;
-  width:22px;
-  height:22px;
-  margin:-11px 0 0 -11px;
-  display:grid;
-  place-items:center;
-  border-radius:999px;
-  background:rgba(255,255,255,.95);
-  box-shadow:0 6px 16px rgba(0,0,0,.12);
-  font-size:.66rem;
-  font-weight:700;
+  display:block;
+  width:auto;
+  height:auto;
+  margin:0;
+  padding:0 1px;
+  background:transparent;
+  box-shadow:none;
+  border:0;
+  font-size:.70rem;
+  line-height:1;
+  font-weight:800;
+  letter-spacing:.01em;
+  pointer-events:none;
+  text-shadow:
+    0 0 2px rgba(255,255,255,.98),
+    0 0 5px rgba(255,255,255,.92),
+    0 1px 1px rgba(255,255,255,.9);
 }
-.axis-x{color:#cf5c5c}
-.axis-y{color:#4e9661}
-.axis-z{color:#5e7fd5}
+.axis-x{color:#d45252}
+.axis-y{color:#3d9959}
+.axis-z{color:#4e70d1}
 .mini-compass{
   position:absolute;
   right:14px;

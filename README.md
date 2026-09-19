@@ -1,30 +1,61 @@
-# Resort Map Builder · Parte 6.7.1
+# Resort Map Builder · Parte 6.7.2
 
-Corrección inmediata de la Parte 6.7.
+Esta versión parte directamente de la 6.7.1 corregida y conserva todas las funciones anteriores.
 
-## Bug corregido
+## Correcciones principales
 
-La creación dinámica de los inputs numéricos X/Y/Z provocaba:
+### Contornos persistentes
 
-`HierarchyRequestError: Failed to execute 'appendChild' on 'Node'`
+El contorno ahora se genera como una capa hija de cada mesh compatible. Eso hace que herede la misma posición, rotación y escala de la geometría.
 
-La causa era que el código movía el nodo del valor dentro de un contenedor nuevo
-y después consultaba otra vez `parentElement`, que para entonces ya era el
-contenedor nuevo. Eso hacía que intentara insertarse a sí mismo.
+Ya no se reconstruye el contorno durante cada frame de mover / rotar / escalar. Esto corrige el problema donde el objeto rotaba pero el contorno quedaba desfasado o desaparecía al confirmar la transformación.
 
-Ahora se conserva la referencia al padre original antes de mover ningún nodo.
+Se mantienen sin contorno por diseño:
 
-## Se conserva de 6.7
+- vegetación,
+- agua,
+- postes / lámparas,
+- fuentes,
+- puente normal y puente arqueado.
 
-- Rotación libre normalmente.
-- Mantener Control al rotar = snap angular cada 45 grados.
-- 45 / 90 / 135 / 180 / 225 / 270 / 315 grados.
+Sí pueden usar contorno, entre otros:
+
+- edificios,
+- bloques y formas geométricas,
+- caminos,
+- puertas y ventanas,
+- columnas y pilares,
+- muros y barandales,
+- escaleras.
+
+Cada objeto compatible conserva:
+
+- Contorno ON / OFF.
+- Nitidez / intensidad del contorno.
+
+### Etiquetas X / Y / Z
+
+Las letras dejaron de colocarse como burbujas flotantes alrededor del volumen del objeto.
+Ahora se posicionan en pantalla siguiendo la dirección real de las líneas del gizmo de TransformControls.
+
+- Mover: ejes globales.
+- Escalar: ejes locales del objeto.
+- Rotar: solo se muestra la etiqueta del eje visible.
+
+### Optimización
+
+Los EdgesGeometry ya no se destruyen y recrean continuamente durante una transformación. Solo se reconstruyen cuando cambia realmente la geometría, por ejemplo al modificar una escalera paramétrica.
+
+## Conservado
+
 - Undo / Redo.
-- Contornos configurables.
-- Inputs numéricos X/Y/Z.
-- Etiquetas X/Y/Z.
+- Inputs numéricos y sliders X / Y / Z.
 - Mini brújula.
-- Gestos móviles.
-- Imagen guía.
+- Activar / desactivar etiquetas de ejes.
+- Ctrl + rotar = snap cada 45 grados.
+- Escalado de un solo lado.
+- Imán de cuadrícula, objetos y suelo.
+- Imagen guía y sus controles.
 - Guardar / cargar resort.json.
-- Compatibilidad con proyectos anteriores.
+- Compatibilidad con archivos anteriores.
+- Gestos móviles y controles de PC.
