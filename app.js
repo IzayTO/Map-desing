@@ -118,6 +118,7 @@ const rotationZInput = document.querySelector("#rotationZ");
 const mirrorXButton = document.querySelector("#mirrorX");
 const mirrorYButton = document.querySelector("#mirrorY");
 const mirrorZButton = document.querySelector("#mirrorZ");
+const mirrorQuickToolbar = document.querySelector("#mirrorQuickToolbar");
 const rotationAxisToolbar = document.querySelector("#rotationAxisToolbar");
 const rotationAxisButtons = [...document.querySelectorAll("[data-rotation-axis]")];
 
@@ -298,6 +299,20 @@ function applyScaleMagnitudes(object, x, y, z) {
 function updateMirrorUi() {
   const object = state.selected;
   const mirror = object ? ensureMirrorState(object) : { x: false, y: false, z: false };
+
+  // Los espejos son una herramienta rápida de Mover. Cuando hay un objeto
+  // seleccionado sustituyen al badge "Plano 3D" exactamente en la misma zona.
+  // Al cambiar de modo o deseleccionar, el badge vuelve automáticamente.
+  const showQuickMirrors = Boolean(
+    object &&
+    state.editSection === "objects" &&
+    state.transformMode === "translate" &&
+    !placementController?.isActive()
+  );
+
+  mirrorQuickToolbar?.classList.toggle("hidden", !showQuickMirrors);
+  workspace?.classList.toggle("mirror-tools-active", showQuickMirrors);
+
   for (const [axis, button] of [["x", mirrorXButton], ["y", mirrorYButton], ["z", mirrorZButton]]) {
     if (!button) continue;
     const active = Boolean(object && mirror[axis]);
@@ -349,6 +364,11 @@ function updateRotationAxisUi() {
 
   rotationAxisToolbar?.classList.toggle("hidden", !show);
   workspace?.classList.toggle("rotation-axes-active", show);
+
+  if (show) {
+    mirrorQuickToolbar?.classList.add("hidden");
+    workspace?.classList.remove("mirror-tools-active");
+  }
 
   for (const button of rotationAxisButtons) {
     const axis = String(button.dataset.rotationAxis || "").toLowerCase();
@@ -1256,11 +1276,14 @@ function updateEditorSectionUi() {
     specialModeToolbar?.classList.add("hidden");
     updatePropertiesFromSelection();
     updateRotationAxisUi();
+    updateMirrorUi();
     return;
   }
 
   rotationAxisToolbar?.classList.add("hidden");
+  mirrorQuickToolbar?.classList.add("hidden");
   workspace?.classList.remove("rotation-axes-active");
+  workspace?.classList.remove("mirror-tools-active");
   selectionToolbar?.classList.add("hidden");
   hideAlignmentGuides();
   axisOverlay?.hide?.();
@@ -2423,6 +2446,7 @@ function setTransformMode(mode) {
 
   configureTransformForSelection();
   updateRotationAxisUi();
+  updateMirrorUi();
   markOverlayDirty();
 
   for (const button of modeButtons) {

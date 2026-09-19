@@ -11,7 +11,7 @@
   <title>Wizard Map Design parte 8.1</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.1.0" />
+  <link rel="stylesheet" href="./style.css?v=8.1.1" />
 
   <script type="importmap">
   {
@@ -145,6 +145,20 @@
         <button class="rotation-axis-button" type="button" data-rotation-axis="X" aria-pressed="false" title="Permitir rotación en X">X</button>
         <button class="rotation-axis-button active" type="button" data-rotation-axis="Y" aria-pressed="true" title="Permitir rotación en Y">Y</button>
         <button class="rotation-axis-button" type="button" data-rotation-axis="Z" aria-pressed="false" title="Permitir rotación en Z">Z</button>
+      </div>
+
+      <!-- ESPEJO RÁPIDO · visible al mover un objeto seleccionado -->
+      <div class="mirror-quick-toolbar hidden" id="mirrorQuickToolbar" aria-label="Reflejar objeto seleccionado">
+        <span class="mirror-quick-title">Espejo</span>
+        <button class="mirror-quick-button" id="mirrorX" type="button" aria-pressed="false" title="Reflejar en el eje X">
+          <span aria-hidden="true">↔</span><small>X</small>
+        </button>
+        <button class="mirror-quick-button" id="mirrorY" type="button" aria-pressed="false" title="Reflejar en el eje Y">
+          <span aria-hidden="true">↕</span><small>Y</small>
+        </button>
+        <button class="mirror-quick-button" id="mirrorZ" type="button" aria-pressed="false" title="Reflejar en el eje Z">
+          <span aria-hidden="true">⇄</span><small>Z</small>
+        </button>
       </div>
 
       <!-- BIBLIOTECA -->
@@ -404,13 +418,6 @@
                 <span>Giro Z · °</span>
                 <input id="rotationZ" type="number" min="-360" max="360" step="1" inputmode="decimal" />
               </label>
-            </div>
-
-            <div class="section-label">Espejo</div>
-            <div class="mirror-grid" aria-label="Reflejar objeto">
-              <button class="mirror-button" id="mirrorX" type="button" aria-pressed="false" title="Reflejar en el eje X"><span>↔</span><small>Espejo X</small></button>
-              <button class="mirror-button" id="mirrorY" type="button" aria-pressed="false" title="Reflejar en el eje Y"><span>↕</span><small>Espejo Y</small></button>
-              <button class="mirror-button" id="mirrorZ" type="button" aria-pressed="false" title="Reflejar en el eje Z"><span>⇄</span><small>Espejo Z</small></button>
             </div>
 
             <div class="properties-actions">
@@ -803,6 +810,6 @@
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.1.0"></script>
+  <script type="module" src="./app.js?v=8.1.1"></script>
 </body>
 </html>
