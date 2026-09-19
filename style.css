@@ -1901,3 +1901,79 @@ input:disabled{
   .mirror-quick-button>span{font-size:1rem}
   .mirror-quick-button>small{font-size:.52rem}
 }
+
+
+/* ==================================================
+   Parte 8.2 · selección múltiple + altura Y con base fija
+   ================================================== */
+.multi-select-entry{
+  margin:0 0 10px;
+  padding:9px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.54);
+}
+.multi-select-entry>div{min-width:0;display:grid;gap:2px}
+.multi-select-entry strong{font-size:.64rem}
+.multi-select-entry small{color:#777;font-size:.52rem;line-height:1.35}
+.multi-selection-properties{
+  margin:0 0 12px;
+  padding:10px;
+  display:grid;
+  gap:12px;
+  border:1px solid rgba(23,23,23,.14);
+  border-radius:13px;
+  background:rgba(255,255,255,.7);
+}
+.multi-selection-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.multi-selection-summary>div{min-width:0;display:grid;gap:2px}
+.multi-selection-summary strong{font-size:.72rem}
+.multi-selection-summary small{font-size:.52rem;color:#777}
+.multi-height-note{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:8px 9px;
+  border-radius:10px;
+  background:rgba(52,168,83,.075);
+  border:1px solid rgba(52,168,83,.13);
+}
+.multi-height-arrow{
+  width:34px;
+  height:34px;
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  border-radius:10px;
+  background:rgba(52,168,83,.12);
+  color:#2a9b4d;
+  font-size:1.3rem;
+  font-weight:800;
+}
+.multi-height-note>div{display:grid;gap:2px;min-width:0}
+.multi-height-note strong{font-size:.62rem}
+.multi-height-note small{font-size:.51rem;line-height:1.35;color:#6f786f}
+.multi-selection-help{margin:0;color:#747474;font-size:.52rem;line-height:1.45}
+.quick-action.mixed{box-shadow:inset 0 0 0 1px rgba(23,23,23,.24)}
+.mirror-quick-button.mixed{
+  background:linear-gradient(135deg,#1c1c1c 0 50%,rgba(255,255,255,.88) 50% 100%);
+  color:#555;
+}
+.workspace.multi-select-active .workspace-badge{display:none}
+.tool-button:disabled{opacity:.32;cursor:not-allowed;pointer-events:none}
+.workspace.multi-select-active #viewport canvas{cursor:crosshair}
+
+@media (max-width:760px), (hover:none) and (pointer:coarse){
+  .multi-select-entry{grid-template-columns:1fr;gap:8px}
+  .multi-select-entry .special-editor-button{width:100%}
+  .multi-selection-properties{padding:9px}
+}

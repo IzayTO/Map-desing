@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.1 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.2 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.1</title>
+  <title>Wizard Map Design parte 8.2</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.1.1" />
+  <link rel="stylesheet" href="./style.css?v=8.2.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.1</h1>
+          <h1>Wizard Map Design parte 8.2</h1>
         </div>
       </div>
 
@@ -328,6 +328,45 @@
         </div>
 
         <div class="editor-section" id="objectEditorSection">
+          <section class="multi-select-entry">
+            <div>
+              <strong>Selección múltiple</strong>
+              <small>Elige varios objetos y cambia su altura Y al mismo tiempo.</small>
+            </div>
+            <button class="special-editor-button" id="multiSelectStart" type="button">Seleccionar múltiples</button>
+          </section>
+
+          <section class="multi-selection-properties hidden" id="multiSelectionProperties">
+            <div class="multi-selection-summary">
+              <div>
+                <span class="section-label">SELECCIÓN ACTIVA</span>
+                <strong id="multiSelectionCount">0 objetos</strong>
+                <small id="multiSelectionLockedCount">Ninguno bloqueado</small>
+              </div>
+              <button class="mini-switch" id="multiSelectionClear" type="button">Salir</button>
+            </div>
+
+            <div class="multi-height-note">
+              <span class="multi-height-arrow" aria-hidden="true">↑</span>
+              <div>
+                <strong>Altura Y · base fija</strong>
+                <small>La flecha verde cambia solo la altura. X/Z, posición y rotación permanecen intactos.</small>
+              </div>
+            </div>
+
+            <label class="slider-field">
+              <span class="slider-field-head">
+                <span>Opacidad del grupo</span>
+                <strong id="multiOpacityValue">100%</strong>
+              </span>
+              <input id="multiOpacity" type="range" min="15" max="100" step="5" value="100" />
+            </label>
+
+            <p class="multi-selection-help">
+              Bloquear, eliminar y Espejo X/Y/Z también se aplican a la selección. Los objetos bloqueados no cambian de altura ni espejo hasta desbloquearlos.
+            </p>
+          </section>
+
           <div class="empty-properties" id="emptyProperties">
             Selecciona un edificio o prop en el plano.
           </div>
@@ -798,18 +837,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.1 estén en el repositorio.</p>
+          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.2 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.1</span>
+      <span>Wizard Map Design parte 8.2</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.1.1"></script>
+  <script type="module" src="./app.js?v=8.2.0"></script>
 </body>
 </html>

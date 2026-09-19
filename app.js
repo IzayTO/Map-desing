@@ -12,16 +12,16 @@ import {
   magnetizeXZ,
   snapObjectToObjects,
 } from "./snap.js?v=8.0.0";
-import { setupOneSidedScale } from "./scale-anchor.js?v=8.1.0";
+import { setupOneSidedScale } from "./scale-anchor.js?v=8.2.0";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.1.0";
-import { createAxisOverlay } from "./axis-overlay.js?v=8.1.0";
+} from "./project-io.js?v=8.2.0";
+import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
 import { createPlacesManager } from "./places.js?v=8.0.0";
-import { createRouteEditor } from "./route-editor.js?v=8.1.0";
+import { createRouteEditor } from "./route-editor.js?v=8.2.0";
 
 window.__RMB_READY__ = false;
 
@@ -135,6 +135,14 @@ const specialModeToolbar = document.querySelector("#specialModeToolbar");
 const specialModeText = document.querySelector("#specialModeText");
 const specialModeCancelButton = document.querySelector("#specialModeCancel");
 
+const multiSelectStartButton = document.querySelector("#multiSelectStart");
+const multiSelectionProperties = document.querySelector("#multiSelectionProperties");
+const multiSelectionCount = document.querySelector("#multiSelectionCount");
+const multiSelectionLockedCount = document.querySelector("#multiSelectionLockedCount");
+const multiOpacityInput = document.querySelector("#multiOpacity");
+const multiOpacityValue = document.querySelector("#multiOpacityValue");
+const multiSelectionClearButton = document.querySelector("#multiSelectionClear");
+
 
 let positionXNumberInput = null;
 let positionYNumberInput = null;
@@ -204,6 +212,9 @@ const state = {
   ctrlRotationSnap: false,
   rotationAxes: { x: false, y: true, z: false },
   editSection: "objects",
+  multiSelected: [],
+  multiSelectCollecting: false,
+  multiScaleSnapshot: null,
 };
 
 let scene;
@@ -224,6 +235,7 @@ let oneSidedScaleController;
 let axisOverlay;
 let placesManager;
 let routeEditor;
+let multiScaleProxy;
 let overlayDirty = true;
 let resizeObserver;
 let animationFrame = 0;
@@ -297,16 +309,16 @@ function applyScaleMagnitudes(object, x, y, z) {
 }
 
 function updateMirrorUi() {
-  const object = state.selected;
-  const mirror = object ? ensureMirrorState(object) : { x: false, y: false, z: false };
+  const multi = isMultiSelectionReady();
+  const targets = multi
+    ? state.multiSelected
+    : (state.selected ? [state.selected] : []);
 
-  // Los espejos son una herramienta rápida de Mover. Cuando hay un objeto
-  // seleccionado sustituyen al badge "Plano 3D" exactamente en la misma zona.
-  // Al cambiar de modo o deseleccionar, el badge vuelve automáticamente.
   const showQuickMirrors = Boolean(
-    object &&
+    targets.length &&
     state.editSection === "objects" &&
-    state.transformMode === "translate" &&
+    !state.multiSelectCollecting &&
+    (multi || state.transformMode === "translate") &&
     !placementController?.isActive()
   );
 
@@ -315,31 +327,74 @@ function updateMirrorUi() {
 
   for (const [axis, button] of [["x", mirrorXButton], ["y", mirrorYButton], ["z", mirrorZButton]]) {
     if (!button) continue;
-    const active = Boolean(object && mirror[axis]);
-    button.setAttribute("aria-pressed", String(active));
-    button.classList.toggle("active", active);
-    button.disabled = !object || isLocked(object);
+    const values = targets.map((object) => Boolean(ensureMirrorState(object)[axis]));
+    const allActive = values.length > 0 && values.every(Boolean);
+    const someActive = values.some(Boolean) && !allActive;
+    const editable = targets.some((object) => !isLocked(object));
+
+    button.setAttribute("aria-pressed", String(allActive));
+    button.classList.toggle("active", allActive);
+    button.classList.toggle("mixed", someActive);
+    button.disabled = !targets.length || !editable;
   }
 }
 
 function mirrorSelectedObject(axis) {
+  if (!["x", "y", "z"].includes(axis)) return;
+
+  if (isMultiSelectionReady()) {
+    const targets = state.multiSelected.filter((object) => !isLocked(object));
+    if (!targets.length) return;
+
+    const targetState = !targets.every(
+      (object) => Boolean(ensureMirrorState(object)[axis])
+    );
+
+    for (const object of targets) {
+      const before = new THREE.Box3().setFromObject(object);
+      const mirror = ensureMirrorState(object);
+      mirror[axis] = targetState;
+
+      applyScaleMagnitudes(
+        object,
+        Math.abs(object.scale.x),
+        Math.abs(object.scale.y),
+        Math.abs(object.scale.z)
+      );
+      object.updateMatrixWorld(true);
+
+      if (axis === "y") {
+        const after = new THREE.Box3().setFromObject(object);
+        if (Number.isFinite(before.min.y) && Number.isFinite(after.min.y)) {
+          object.position.y += before.min.y - after.min.y;
+        }
+      }
+
+      applyObjectOutlineStyle(object, true);
+    }
+
+    positionMultiScaleProxy();
+    configureMultiScaleTransform();
+    updateMultiSelectionUi();
+    recordHistory(`Espejo ${axis.toUpperCase()} múltiple`);
+    return;
+  }
+
   const object = state.selected;
-  if (!object || isLocked(object) || !["x", "y", "z"].includes(axis)) return;
+  if (!object || isLocked(object)) return;
 
   const before = new THREE.Box3().setFromObject(object);
   const mirror = ensureMirrorState(object);
   mirror[axis] = !mirror[axis];
 
-  const magnitudes = {
-    x: Math.abs(object.scale.x),
-    y: Math.abs(object.scale.y),
-    z: Math.abs(object.scale.z),
-  };
-  applyScaleMagnitudes(object, magnitudes.x, magnitudes.y, magnitudes.z);
+  applyScaleMagnitudes(
+    object,
+    Math.abs(object.scale.x),
+    Math.abs(object.scale.y),
+    Math.abs(object.scale.z)
+  );
   object.updateMatrixWorld(true);
 
-  // Al reflejar verticalmente, conservamos la misma base para no mandar
-  // escaleras/arquitectura bajo el plano por cambiar el signo de Y.
   if (axis === "y") {
     const after = new THREE.Box3().setFromObject(object);
     if (Number.isFinite(before.min.y) && Number.isFinite(after.min.y)) {
@@ -357,6 +412,8 @@ function mirrorSelectedObject(axis) {
 function updateRotationAxisUi() {
   const show = Boolean(
     state.selected &&
+    !state.multiSelectCollecting &&
+    !hasMultiSelection() &&
     !isLocked(state.selected) &&
     state.editSection === "objects" &&
     state.transformMode === "rotate"
@@ -384,6 +441,362 @@ function toggleRotationAxis(axis) {
   state.rotationAxes[key] = !state.rotationAxes[key];
   configureTransformForSelection();
   updateRotationAxisUi();
+}
+
+function hasMultiSelection() {
+  return Array.isArray(state.multiSelected) && state.multiSelected.length > 0;
+}
+
+function isMultiSelected(object) {
+  return Boolean(object && state.multiSelected.includes(object));
+}
+
+function isMultiSelectionReady() {
+  return hasMultiSelection() && !state.multiSelectCollecting;
+}
+
+function unlockedMultiTargets() {
+  return state.multiSelected.filter((object) => !isLocked(object));
+}
+
+function multiSelectionBounds(objects = state.multiSelected) {
+  const box = new THREE.Box3();
+  let hasBox = false;
+
+  for (const object of objects) {
+    if (!object || !state.objects.includes(object)) continue;
+    object.updateWorldMatrix(true, true);
+    const current = new THREE.Box3().setFromObject(object);
+    if (current.isEmpty()) continue;
+    if (!hasBox) {
+      box.copy(current);
+      hasBox = true;
+    } else {
+      box.union(current);
+    }
+  }
+
+  return hasBox ? box : null;
+}
+
+function ensureMultiScaleProxy() {
+  if (multiScaleProxy) return multiScaleProxy;
+  multiScaleProxy = new THREE.Object3D();
+  multiScaleProxy.name = "Multi height proxy";
+  multiScaleProxy.userData.editorHelper = true;
+  scene.add(multiScaleProxy);
+  return multiScaleProxy;
+}
+
+function positionMultiScaleProxy() {
+  if (!multiScaleProxy || !hasMultiSelection()) return;
+  const box = multiSelectionBounds();
+  if (!box) return;
+  const center = box.getCenter(new THREE.Vector3());
+  multiScaleProxy.position.set(center.x, box.max.y, center.z);
+  multiScaleProxy.rotation.set(0, 0, 0);
+  multiScaleProxy.scale.set(1, 1, 1);
+  multiScaleProxy.updateMatrixWorld(true);
+}
+
+function configureMultiScaleTransform() {
+  if (!transformControls || !isMultiSelectionReady()) return;
+
+  const editable = unlockedMultiTargets();
+  if (!editable.length) {
+    transformControls.detach();
+    return;
+  }
+
+  ensureMultiScaleProxy();
+  positionMultiScaleProxy();
+
+  transformControls.attach(multiScaleProxy);
+  // La selección múltiple usa una flecha Y como control de ALTURA.
+  // El desplazamiento de esa flecha se convierte en escala vertical,
+  // conservando individualmente la base inferior de cada objeto.
+  transformControls.setMode("translate");
+  transformControls.setSpace("world");
+  transformControls.showX = false;
+  transformControls.showY = true;
+  transformControls.showZ = false;
+  transformControls.setSize(1.08);
+}
+
+function beginMultiScaleDrag() {
+  if (!isMultiSelectionReady() || transformControls.object !== multiScaleProxy) {
+    state.multiScaleSnapshot = null;
+    return false;
+  }
+
+  const objects = unlockedMultiTargets().map((object) => {
+    object.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(object);
+    return {
+      object,
+      scaleY: Math.max(0.0001, Math.abs(object.scale.y)),
+      bottom: box.min.y,
+      height: Math.max(0.05, box.max.y - box.min.y),
+    };
+  });
+
+  if (!objects.length) {
+    state.multiScaleSnapshot = null;
+    return false;
+  }
+
+  state.multiScaleSnapshot = {
+    proxyStartY: multiScaleProxy.position.y,
+    objects,
+  };
+  return true;
+}
+
+function applyMultiScaleDrag() {
+  const snapshot = state.multiScaleSnapshot;
+  if (!snapshot || transformControls.object !== multiScaleProxy) return false;
+
+  const deltaHeight = multiScaleProxy.position.y - snapshot.proxyStartY;
+
+  for (const record of snapshot.objects) {
+    const object = record.object;
+    if (!state.objects.includes(object) || isLocked(object)) continue;
+
+    const targetHeight = Math.max(0.05, record.height + deltaHeight);
+    const ratio = targetHeight / Math.max(0.05, record.height);
+    const nextScaleY = clamp(record.scaleY * ratio, 0.02, 100);
+
+    object.scale.y = nextScaleY * mirrorSign(object, "y");
+    object.updateMatrixWorld(true);
+
+    const after = new THREE.Box3().setFromObject(object);
+    if (Number.isFinite(after.min.y)) {
+      object.position.y += record.bottom - after.min.y;
+      object.updateMatrixWorld(true);
+    }
+
+  }
+
+  // No reconstruimos listas, contornos ni UI durante cada pixel de arrastre.
+  // Los contornos son hijos del mesh y heredan la escala automáticamente.
+  return true;
+}
+
+function endMultiScaleDrag() {
+  if (!state.multiScaleSnapshot) return false;
+  state.multiScaleSnapshot = null;
+  positionMultiScaleProxy();
+  configureMultiScaleTransform();
+  return true;
+}
+
+function updateMultiSelectModeButtons() {
+  const multiActive = state.multiSelectCollecting || isMultiSelectionReady();
+
+  for (const button of modeButtons) {
+    const mode = button.dataset.mode;
+    if (multiActive) {
+      const allowed = mode === "scale";
+      button.disabled = !allowed;
+      button.classList.toggle("active", allowed && isMultiSelectionReady());
+    } else {
+      button.disabled = false;
+      button.classList.toggle("active", mode === state.transformMode);
+    }
+  }
+}
+
+function updateMultiSelectionSpecialToolbar() {
+  if (!state.multiSelectCollecting) return;
+  updateSpecialModeToolbar(
+    "objects",
+    "multi",
+    `SELECCIÓN MÚLTIPLE · ${state.multiSelected.length} ${state.multiSelected.length === 1 ? "objeto" : "objetos"}`
+  );
+}
+
+function updateMultiSelectionPanel() {
+  const targets = state.multiSelected;
+  const count = targets.length;
+  const lockedCount = targets.filter(isLocked).length;
+
+  multiSelectionProperties?.classList.toggle("hidden", !isMultiSelectionReady());
+
+  if (multiSelectionCount) {
+    multiSelectionCount.textContent = `${count} ${count === 1 ? "objeto" : "objetos"}`;
+  }
+  if (multiSelectionLockedCount) {
+    multiSelectionLockedCount.textContent = lockedCount
+      ? `${lockedCount} bloqueado${lockedCount === 1 ? "" : "s"}`
+      : "Ninguno bloqueado";
+  }
+
+  if (isMultiSelectionReady() && count) {
+    const opacities = targets.map(getObjectOpacity);
+    const average = opacities.reduce((sum, value) => sum + value, 0) / opacities.length;
+    const same = opacities.every((value) => Math.abs(value - opacities[0]) < 0.001);
+    const pct = Math.round(average * 100);
+    if (multiOpacityInput) multiOpacityInput.value = String(pct);
+    if (multiOpacityValue) {
+      multiOpacityValue.textContent = same
+        ? `${Math.round(opacities[0] * 100)}%`
+        : `Mixta · ${pct}%`;
+    }
+  }
+}
+
+function updateMultiSelectionUi() {
+  const collecting = state.multiSelectCollecting;
+  const ready = isMultiSelectionReady();
+  const targets = state.multiSelected;
+  const count = targets.length;
+  const lockedCount = targets.filter(isLocked).length;
+
+  workspace?.classList.toggle("multi-select-active", collecting || ready);
+  updateMultiSelectionPanel();
+
+  if (ready) {
+    selectionToolbar?.classList.remove("hidden");
+    if (quickSelectionName) quickSelectionName.textContent = `${count} objetos`;
+
+    const allLocked = count > 0 && targets.every(isLocked);
+    const someLocked = lockedCount > 0 && !allLocked;
+    quickLockButton?.setAttribute("aria-pressed", String(allLocked));
+    quickLockButton?.classList.toggle("locked", allLocked);
+    quickLockButton?.classList.toggle("mixed", someLocked);
+    if (quickLockIcon) quickLockIcon.textContent = allLocked ? "🔒" : "🔓";
+    if (quickLockText) quickLockText.textContent = allLocked ? "Desbloquear" : "Bloquear";
+
+    quickAnchorScaleButton?.classList.add("hidden");
+    quickDuplicateButton?.classList.add("hidden");
+    quickDeleteButton?.classList.remove("hidden");
+
+    if (selectionStatus) {
+      selectionStatus.textContent = `${count} objetos seleccionados · altura Y conjunta`;
+    }
+  } else {
+    quickAnchorScaleButton?.classList.remove("hidden");
+    quickDuplicateButton?.classList.remove("hidden");
+  }
+
+  if (collecting) {
+    selectionToolbar?.classList.add("hidden");
+    if (selectionStatus) {
+      selectionStatus.textContent = `${count} seleccionados · toca objetos para añadir/quitar`;
+    }
+    updateMultiSelectionSpecialToolbar();
+  }
+
+  updateMultiSelectModeButtons();
+  updateMirrorUi();
+  updateRotationAxisUi();
+  refreshOutlineStates();
+  refreshSceneList();
+}
+
+function clearMultiSelection({ resetMode = true } = {}) {
+  if (!state.multiSelectCollecting && !hasMultiSelection()) return;
+
+  state.multiSelectCollecting = false;
+  state.multiSelected = [];
+  state.multiScaleSnapshot = null;
+
+  if (transformControls?.object === multiScaleProxy) {
+    transformControls.detach();
+  }
+
+  specialModeToolbar?.classList.add("hidden");
+  workspace?.classList.remove("multi-select-active");
+  quickAnchorScaleButton?.classList.remove("hidden");
+  quickDuplicateButton?.classList.remove("hidden");
+  multiSelectionProperties?.classList.add("hidden");
+
+  if (resetMode) {
+    state.transformMode = "translate";
+    transformControls?.setMode("translate");
+    transformControls?.setSize(0.92);
+  }
+
+  refreshOutlineStates();
+  updateMultiSelectModeButtons();
+  updateMirrorUi();
+  updateRotationAxisUi();
+  refreshSceneList();
+  updatePropertiesFromSelection();
+  markOverlayDirty();
+}
+
+function startMultiSelectMode() {
+  if (state.editSection !== "objects") {
+    state.editSection = "objects";
+    updateEditorSectionUi();
+  }
+
+  if (placementController?.isActive()) {
+    placementController.finish();
+    renderer?.domElement?.classList.remove("placement-active");
+  }
+
+  if (state.selected) {
+    state.selected = null;
+    transformControls.detach();
+    removeSelectionBox();
+  }
+
+  state.multiSelected = [];
+  state.multiSelectCollecting = true;
+  state.multiScaleSnapshot = null;
+  transformControls.detach();
+  transformControls.setSize(0.92);
+  hideAlignmentGuides();
+  axisOverlay?.hide?.();
+
+  updateMultiSelectionUi();
+
+  if (mobilePanels?.isMobile()) {
+    mobilePanels.closePanels();
+  }
+}
+
+function toggleMultiSelectedObject(object) {
+  if (!state.multiSelectCollecting || !object || !state.objects.includes(object)) return;
+
+  const index = state.multiSelected.indexOf(object);
+  if (index >= 0) {
+    state.multiSelected.splice(index, 1);
+  } else {
+    state.multiSelected.push(object);
+  }
+
+  updateMultiSelectionUi();
+}
+
+function finishMultiSelectMode() {
+  if (!state.multiSelectCollecting) return;
+
+  if (!state.multiSelected.length) {
+    clearMultiSelection();
+    return;
+  }
+
+  state.multiSelectCollecting = false;
+  specialModeToolbar?.classList.add("hidden");
+  state.transformMode = "scale";
+  configureMultiScaleTransform();
+  updateMultiSelectionUi();
+  updatePropertiesFromSelection();
+}
+
+function setMultiOpacity(value) {
+  if (!isMultiSelectionReady()) return;
+  const opacity = clamp(value, 0.15, 1);
+  for (const object of state.multiSelected) {
+    setObjectOpacity(object, opacity);
+  }
+  if (multiOpacityValue) {
+    multiOpacityValue.textContent = `${Math.round(opacity * 100)}%`;
+  }
+  refreshOutlineStates();
 }
 
 function makeId(prefix) {
@@ -574,6 +987,30 @@ function setObjectLocked(object, locked) {
 }
 
 function toggleSelectedLock() {
+  if (isMultiSelectionReady()) {
+    const targets = state.multiSelected;
+    if (!targets.length) return;
+    const nextLocked = !targets.every(isLocked);
+
+    for (const object of targets) {
+      object.userData.locked = nextLocked;
+    }
+
+    if (nextLocked) {
+      transformControls.detach();
+    } else {
+      configureMultiScaleTransform();
+    }
+
+    updateMultiSelectionUi();
+    recordHistory(
+      nextLocked
+        ? "Bloquear selección múltiple"
+        : "Desbloquear selección múltiple"
+    );
+    return;
+  }
+
   if (!state.selected) return;
   setObjectLocked(state.selected, !isLocked(state.selected));
   recordHistory("Bloquear objeto");
@@ -874,7 +1311,7 @@ function refreshOutlineStates() {
   for (const object of state.objects) {
     applyObjectOutlineStyle(
       object,
-      object === state.selected
+      object === state.selected || isMultiSelected(object)
     );
   }
 }
@@ -1210,6 +1647,7 @@ function resetHistoryToCurrent() {
 function applyHistorySnapshot(snapshot) {
   if (!snapshot) return;
   state.historyMuted = true;
+  clearMultiSelection({ resetMode: false });
   clearEditorObjects();
   for (const record of snapshot.objects || []) {
     restoreProjectObject(record);
@@ -1251,8 +1689,25 @@ function updateSpecialModeToolbar(section, mode = "idle", message = "") {
   if (!specialModeToolbar) return;
   const visible = state.editSection === section && mode !== "idle";
   specialModeToolbar.classList.toggle("hidden", !visible);
+
   if (visible && specialModeText) {
-    specialModeText.textContent = message || (section === "places" ? "Editando lugar" : "Editando rutas");
+    specialModeText.textContent =
+      message ||
+      (section === "objects"
+        ? "Selección múltiple"
+        : section === "places"
+          ? "Editando lugar"
+          : "Editando rutas");
+  }
+
+  if (specialModeCancelButton) {
+    const isMulti = section === "objects" && mode === "multi";
+    specialModeCancelButton.textContent = isMulti ? "✓" : "×";
+    specialModeCancelButton.setAttribute(
+      "aria-label",
+      isMulti ? "Terminar selección múltiple" : "Cancelar modo"
+    );
+    specialModeCancelButton.title = isMulti ? "Terminar selección" : "Cancelar modo";
   }
 }
 
@@ -1273,10 +1728,15 @@ function updateEditorSectionUi() {
   routeEditor?.setActive?.(section === "routes");
 
   if (section === "objects") {
-    specialModeToolbar?.classList.add("hidden");
+    if (state.multiSelectCollecting) {
+      updateMultiSelectionSpecialToolbar();
+    } else {
+      specialModeToolbar?.classList.add("hidden");
+    }
     updatePropertiesFromSelection();
     updateRotationAxisUi();
     updateMirrorUi();
+    updateMultiSelectionPanel();
     return;
   }
 
@@ -1310,6 +1770,9 @@ function setEditSection(section) {
     if (placementController?.isActive()) {
       placementController.finish();
       renderer?.domElement?.classList.remove("placement-active");
+    }
+    if (state.multiSelectCollecting || hasMultiSelection()) {
+      clearMultiSelection();
     }
     if (state.selected) deselectObject();
   }
@@ -1515,6 +1978,9 @@ function disposeEditorObject(object) {
 
 function clearEditorObjects() {
   transformControls.detach();
+  state.multiSelected = [];
+  state.multiSelectCollecting = false;
+  state.multiScaleSnapshot = null;
   removeSelectionBox();
 
   for (const object of state.objects) {
@@ -1868,6 +2334,7 @@ function createScene() {
   createOriginMarker();
   createMapControls();
   createTransformControls();
+  ensureMultiScaleProxy();
 
   axisOverlay = createAxisOverlay({
     scene,
@@ -2117,6 +2584,11 @@ function createTransformControls() {
     markOverlayDirty();
     state.pendingTransformChange = false;
 
+    if (isMultiSelectionReady() && transformControls.object === multiScaleProxy) {
+      beginMultiScaleDrag();
+      return;
+    }
+
     oneSidedScaleController?.beginDrag(
       transformControls.axis
     );
@@ -2129,6 +2601,17 @@ function createTransformControls() {
   transformControls.addEventListener("mouseUp", () => {
     mapControls.enabled = true;
     markOverlayDirty();
+
+    if (isMultiSelectionReady() && transformControls.object === multiScaleProxy) {
+      const changed = Boolean(state.pendingTransformChange);
+      endMultiScaleDrag();
+      if (changed) {
+        recordHistory("Altura Y múltiple");
+      }
+      state.pendingTransformChange = false;
+      return;
+    }
+
     oneSidedScaleController?.endDrag();
     if (state.pendingTransformChange) {
       if (state.selected) applyObjectOutlineStyle(state.selected, true);
@@ -2138,6 +2621,13 @@ function createTransformControls() {
   });
 
   transformControls.addEventListener("objectChange", () => {
+    if (isMultiSelectionReady() && transformControls.object === multiScaleProxy) {
+      if (applyMultiScaleDrag()) {
+        state.pendingTransformChange = true;
+      }
+      return;
+    }
+
     oneSidedScaleController?.apply();
     markOverlayDirty();
     applySelectionConstraints();
@@ -2290,6 +2780,10 @@ function selectObject(object) {
     return;
   }
 
+  if (state.multiSelectCollecting || hasMultiSelection()) {
+    clearMultiSelection({ resetMode: false });
+  }
+
   state.editSection = "objects";
   state.selected = object;
   updateEditorSectionUi();
@@ -2313,6 +2807,11 @@ function selectObject(object) {
 }
 
 function deselectObject() {
+  if (state.multiSelectCollecting || hasMultiSelection()) {
+    clearMultiSelection();
+    return;
+  }
+
   hideAlignmentGuides();
   state.selected = null;
   transformControls.detach();
@@ -2389,6 +2888,22 @@ function duplicateSelectedObject() {
 }
 
 function deleteSelectedObject() {
+  if (isMultiSelectionReady()) {
+    const targets = [...state.multiSelected];
+    if (!targets.length) return;
+
+    transformControls.detach();
+    const deleting = new Set(targets);
+    for (const object of targets) {
+      disposeEditorObject(object);
+    }
+
+    state.objects = state.objects.filter((item) => !deleting.has(item));
+    clearMultiSelection();
+    recordHistory("Eliminar selección múltiple");
+    return;
+  }
+
   const object = state.selected;
   if (!object) return;
 
@@ -2426,6 +2941,17 @@ function removeSelectionBox() {
 function setTransformMode(mode) {
   if (!["translate", "rotate", "scale"].includes(mode)) return;
 
+  if (state.multiSelectCollecting || isMultiSelectionReady()) {
+    if (mode !== "scale") return;
+
+    state.transformMode = "scale";
+    if (isMultiSelectionReady()) configureMultiScaleTransform();
+    updateMultiSelectModeButtons();
+    updateMirrorUi();
+    markOverlayDirty();
+    return;
+  }
+
   if (state.editSection !== "objects") {
     state.editSection = "objects";
     updateEditorSectionUi();
@@ -2455,6 +2981,11 @@ function setTransformMode(mode) {
 }
 
 function configureTransformForSelection() {
+  if (isMultiSelectionReady()) {
+    configureMultiScaleTransform();
+    return;
+  }
+
   const object = state.selected;
   markOverlayDirty();
   transformControls.showX = true;
@@ -2560,7 +3091,7 @@ function refreshSceneList() {
   for (const object of state.objects) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = `scene-row${object === state.selected ? " selected" : ""}`;
+    row.className = `scene-row${object === state.selected || isMultiSelected(object) ? " selected" : ""}`;
 
     const icon = document.createElement("span");
     icon.className = "scene-icon";
@@ -2589,6 +3120,16 @@ function refreshSceneList() {
         placementController.finish();
       }
 
+      if (state.multiSelectCollecting) {
+        toggleMultiSelectedObject(object);
+        if (mobilePanels?.isMobile()) mobilePanels.closePanels();
+        return;
+      }
+
+      if (isMultiSelectionReady()) {
+        clearMultiSelection({ resetMode: false });
+      }
+
       selectObject(object);
 
       if (mobilePanels?.isMobile()) {
@@ -2615,6 +3156,16 @@ function updatePropertiesFromSelection() {
     selectionToolbar?.classList.add("hidden");
     return;
   }
+
+  if (state.multiSelectCollecting || isMultiSelectionReady()) {
+    emptyProperties.classList.add("hidden");
+    propertiesContent.classList.add("hidden");
+    updateMultiSelectionPanel();
+    updateMultiSelectionUi();
+    return;
+  }
+
+  multiSelectionProperties?.classList.add("hidden");
 
   const object = state.selected;
   const hasSelection = Boolean(object);
@@ -2997,13 +3548,41 @@ function pickObject(event) {
   raycaster.setFromCamera(pointer, camera);
 
   const intersections = raycaster.intersectObjects(state.objects, true);
+  let hitRoot = null;
+
   for (const intersection of intersections) {
     const root = editorRootFromHit(intersection.object);
     if (root) {
-      selectObject(root);
-      return;
+      hitRoot = root;
+      break;
     }
   }
+
+  if (state.multiSelectCollecting) {
+    if (hitRoot) {
+      toggleMultiSelectedObject(hitRoot);
+    } else {
+      clearMultiSelection();
+    }
+    return;
+  }
+
+  if (isMultiSelectionReady()) {
+    if (!hitRoot) {
+      clearMultiSelection();
+      return;
+    }
+
+    clearMultiSelection({ resetMode: false });
+    selectObject(hitRoot);
+    return;
+  }
+
+  if (hitRoot) {
+    selectObject(hitRoot);
+    return;
+  }
+
   deselectObject();
 }
 
@@ -3331,6 +3910,16 @@ function installEvents() {
     });
   }
 
+  multiSelectStartButton?.addEventListener("click", startMultiSelectMode);
+  multiSelectionClearButton?.addEventListener("click", () => clearMultiSelection());
+
+  multiOpacityInput?.addEventListener("input", (event) => {
+    setMultiOpacity(Number(event.target.value) / 100);
+  });
+  multiOpacityInput?.addEventListener("change", () => {
+    if (isMultiSelectionReady()) recordHistory("Opacidad múltiple");
+  });
+
   objectNameInput.addEventListener("input", () => {
     if (!state.selected) return;
     const value = objectNameInput.value.trim();
@@ -3419,6 +4008,10 @@ function installEvents() {
   });
 
   specialModeCancelButton?.addEventListener("click", () => {
+    if (state.editSection === "objects" && state.multiSelectCollecting) {
+      finishMultiSelectMode();
+      return;
+    }
     if (state.editSection === "places") placesManager?.cancelInteraction?.();
     if (state.editSection === "routes") routeEditor?.cancelInteraction?.();
   });
@@ -3620,6 +4213,8 @@ function installEvents() {
         routeEditor.cancelInteraction?.();
       } else if (placementController?.isActive()) {
         placementController.finish();
+      } else if (state.multiSelectCollecting || hasMultiSelection()) {
+        clearMultiSelection();
       } else if (state.editSection !== "objects") {
         setEditSection("objects");
       } else {
@@ -3627,7 +4222,10 @@ function installEvents() {
       }
     }
 
-    if ((event.key === "Delete" || event.key === "Backspace") && state.selected) {
+    if (
+      (event.key === "Delete" || event.key === "Backspace") &&
+      (state.selected || isMultiSelectionReady())
+    ) {
       event.preventDefault();
       deleteSelectedObject();
     }
@@ -3708,6 +4306,10 @@ function cleanup() {
   resizeObserver?.disconnect();
   desktopControls?.dispose?.();
   oneSidedScaleController?.dispose?.();
+  if (multiScaleProxy) {
+    scene?.remove(multiScaleProxy);
+    multiScaleProxy = null;
+  }
   axisOverlay?.dispose?.();
   placesManager?.dispose?.();
   routeEditor?.dispose?.();
