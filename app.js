@@ -1,24 +1,24 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7";
-import { setupMobilePanels } from "./ui.js?v=6.7";
-import { createPlacementController } from "./placement.js?v=6.7";
-import { setupDesktopControls } from "./desktop-controls.js?v=6.7";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=6.7.1";
+import { setupMobilePanels } from "./ui.js?v=6.7.1";
+import { createPlacementController } from "./placement.js?v=6.7.1";
+import { setupDesktopControls } from "./desktop-controls.js?v=6.7.1";
 import {
   GRID_STEP,
   MAGNET_THRESHOLD,
   OBJECT_MAGNET_THRESHOLD,
   magnetizeXZ,
   snapObjectToObjects,
-} from "./snap.js?v=6.7";
-import { setupOneSidedScale } from "./scale-anchor.js?v=6.7";
+} from "./snap.js?v=6.7.1";
+import { setupOneSidedScale } from "./scale-anchor.js?v=6.7.1";
 import {
   createProjectDocument,
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=6.7";
+} from "./project-io.js?v=6.7.1";
 
 window.__RMB_READY__ = false;
 
@@ -726,12 +726,30 @@ function injectPositionNumberInputs() {
   ];
 
   for (const [valueNode, axis] of map) {
-    if (!valueNode || valueNode.parentElement?.querySelector(".axis-number-input")) continue;
+    if (!valueNode) continue;
+
+    const originalParent = valueNode.parentElement;
+    if (!originalParent) continue;
+
+    const existingInput = originalParent.querySelector(".axis-number-input");
+    if (existingInput) {
+      if (axis === "X") positionXNumberInput = existingInput;
+      if (axis === "Y") positionYNumberInput = existingInput;
+      if (axis === "Z") positionZNumberInput = existingInput;
+      continue;
+    }
+
     const wrap = document.createElement("span");
     wrap.className = "slider-head-side";
+
     const input = makePositionNumberInput(axis);
+
+    // IMPORTANT:
+    // Save the original parent BEFORE moving valueNode into wrap.
+    // Otherwise valueNode.parentElement becomes `wrap`, and trying
+    // wrap.appendChild(wrap) throws HierarchyRequestError.
+    originalParent.appendChild(wrap);
     wrap.append(input, valueNode);
-    valueNode.parentElement.appendChild(wrap);
 
     if (axis === "X") positionXNumberInput = input;
     if (axis === "Y") positionYNumberInput = input;
