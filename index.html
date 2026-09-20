@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.2 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.3 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.2</title>
+  <title>Wizard Map Design parte 8.3</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.2.0" />
+  <link rel="stylesheet" href="./style.css?v=8.3.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.2</h1>
+          <h1>Wizard Map Design parte 8.3</h1>
         </div>
       </div>
 
@@ -308,6 +308,16 @@
             <button class="panel-close" type="button" data-close-panel aria-label="Cerrar objetos">×</button>
           </div>
         </div>
+
+        <div class="scene-family-select">
+          <label for="familySelect">
+            <span>Seleccionar familia de objetos</span>
+            <select id="familySelect" aria-label="Seleccionar familia de objetos">
+              <option value="">Sin familias en el plano</option>
+            </select>
+          </label>
+        </div>
+
         <div class="scene-list" id="sceneList" aria-live="polite"></div>
       </aside>
 
@@ -362,8 +372,28 @@
               <input id="multiOpacity" type="range" min="15" max="100" step="5" value="100" />
             </label>
 
+            <div class="multi-outline-control">
+              <div class="multi-outline-head">
+                <div>
+                  <strong>Contorno del grupo</strong>
+                  <small id="multiOutlineApplies">Solo afecta objetos compatibles.</small>
+                </div>
+                <button class="mini-switch" id="multiOutlineToggle" type="button" aria-pressed="true">
+                  Contorno · ON
+                </button>
+              </div>
+
+              <label class="slider-field">
+                <span class="slider-field-head">
+                  <span>Nitidez / intensidad</span>
+                  <strong id="multiOutlineStrengthValue">40%</strong>
+                </span>
+                <input id="multiOutlineStrength" type="range" min="0" max="100" step="5" value="40" />
+              </label>
+            </div>
+
             <p class="multi-selection-help">
-              Bloquear, eliminar y Espejo X/Y/Z también se aplican a la selección. Los objetos bloqueados no cambian de altura ni espejo hasta desbloquearlos.
+              Altura Y, opacidad, contorno, bloqueo, eliminar y Espejo X/Y/Z pueden aplicarse a toda la selección. En PC, mantén Control y haz clic para añadir o quitar objetos sin perder los demás.
             </p>
           </section>
 
@@ -837,18 +867,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.2 estén en el repositorio.</p>
+          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.3 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.2</span>
+      <span>Wizard Map Design parte 8.3</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.2.0"></script>
+  <script type="module" src="./app.js?v=8.3.0"></script>
 </body>
 </html>

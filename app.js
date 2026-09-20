@@ -142,6 +142,11 @@ const multiSelectionLockedCount = document.querySelector("#multiSelectionLockedC
 const multiOpacityInput = document.querySelector("#multiOpacity");
 const multiOpacityValue = document.querySelector("#multiOpacityValue");
 const multiSelectionClearButton = document.querySelector("#multiSelectionClear");
+const multiOutlineToggle = document.querySelector("#multiOutlineToggle");
+const multiOutlineStrengthInput = document.querySelector("#multiOutlineStrength");
+const multiOutlineStrengthValue = document.querySelector("#multiOutlineStrengthValue");
+const multiOutlineApplies = document.querySelector("#multiOutlineApplies");
+const familySelect = document.querySelector("#familySelect");
 
 
 let positionXNumberInput = null;
@@ -459,6 +464,147 @@ function unlockedMultiTargets() {
   return state.multiSelected.filter((object) => !isLocked(object));
 }
 
+function outlineCapableMultiTargets() {
+  return state.multiSelected.filter((object) => objectSupportsOutline(object));
+}
+
+function familyKeyForObject(object) {
+  if (!object) return "";
+  if (isBuilding(object)) return "building";
+  const propType = object.userData?.propType;
+  return propType ? `prop:${propType}` : "";
+}
+
+function familyLabelForKey(key) {
+  if (key === "building") return "Edificios";
+  if (key.startsWith("prop:")) {
+    const propType = key.slice(5);
+    return PROP_CATALOG[propType]?.label || "Props";
+  }
+  return "Objetos";
+}
+
+function objectsForFamily(key) {
+  return state.objects.filter((object) => familyKeyForObject(object) === key);
+}
+
+function refreshFamilySelect() {
+  if (!familySelect) return;
+
+  const current = familySelect.value;
+  const families = new Map();
+
+  for (const object of state.objects) {
+    const key = familyKeyForObject(object);
+    if (!key) continue;
+    families.set(key, (families.get(key) || 0) + 1);
+  }
+
+  familySelect.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = families.size
+    ? "Seleccionar familia…"
+    : "Sin familias en el plano";
+  familySelect.appendChild(placeholder);
+
+  const sorted = [...families.entries()].sort((a, b) =>
+    familyLabelForKey(a[0]).localeCompare(familyLabelForKey(b[0]), "es")
+  );
+
+  for (const [key, count] of sorted) {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = `${familyLabelForKey(key)} · ${count}`;
+    familySelect.appendChild(option);
+  }
+
+  familySelect.disabled = families.size === 0;
+
+  if (families.has(current)) {
+    familySelect.value = current;
+  } else {
+    familySelect.value = "";
+  }
+}
+
+function activateDirectMultiSelection(objects) {
+  const unique = [...new Set(objects)].filter((object) => state.objects.includes(object));
+
+  if (!unique.length) {
+    clearMultiSelection();
+    return;
+  }
+
+  if (placementController?.isActive()) {
+    placementController.finish();
+    renderer?.domElement?.classList.remove("placement-active");
+  }
+
+  state.editSection = "objects";
+  updateEditorSectionUi();
+
+  state.selected = null;
+  removeSelectionBox();
+  transformControls.detach();
+
+  state.multiSelected = unique;
+  state.multiSelectCollecting = false;
+  state.multiScaleSnapshot = null;
+  state.transformMode = "scale";
+
+  specialModeToolbar?.classList.add("hidden");
+  configureMultiScaleTransform();
+  updateMultiSelectionUi();
+  updatePropertiesFromSelection();
+  markOverlayDirty();
+}
+
+function toggleDirectMultiSelection(object) {
+  if (!object || !state.objects.includes(object)) return;
+
+  const current = [];
+
+  if (state.selected && state.objects.includes(state.selected)) {
+    current.push(state.selected);
+  }
+
+  for (const item of state.multiSelected) {
+    if (state.objects.includes(item) && !current.includes(item)) current.push(item);
+  }
+
+  const index = current.indexOf(object);
+  if (index >= 0) {
+    current.splice(index, 1);
+  } else {
+    current.push(object);
+  }
+
+  activateDirectMultiSelection(current);
+}
+
+function isDesktopCtrlSelection(event) {
+  return Boolean(
+    event?.ctrlKey &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches &&
+    state.editSection === "objects" &&
+    !placementController?.isActive()
+  );
+}
+
+function selectObjectFamily(key) {
+  if (!key) return;
+  const matches = objectsForFamily(key);
+  activateDirectMultiSelection(matches);
+
+  if (familySelect) familySelect.value = "";
+
+  if (mobilePanels?.isMobile()) {
+    mobilePanels.closePanels();
+  }
+}
+
 function multiSelectionBounds(objects = state.multiSelected) {
   const box = new THREE.Box3();
   let hasBox = false;
@@ -642,6 +788,61 @@ function updateMultiSelectionPanel() {
         ? `${Math.round(opacities[0] * 100)}%`
         : `Mixta · ${pct}%`;
     }
+
+    const outlineTargets = outlineCapableMultiTargets();
+    const capableCount = outlineTargets.length;
+
+    if (multiOutlineApplies) {
+      multiOutlineApplies.textContent = capableCount
+        ? `${capableCount} de ${count} objeto${count === 1 ? "" : "s"} compatible${capableCount === 1 ? "" : "s"}.`
+        : "Ningún objeto seleccionado usa contorno.";
+    }
+
+    if (multiOutlineToggle) {
+      const enabledValues = outlineTargets.map(
+        (object) => object.userData.outlineEnabled !== false
+      );
+      const allEnabled = capableCount > 0 && enabledValues.every(Boolean);
+      const noneEnabled = capableCount > 0 && enabledValues.every((value) => !value);
+      const mixedEnabled = capableCount > 0 && !allEnabled && !noneEnabled;
+
+      multiOutlineToggle.disabled = capableCount === 0;
+      multiOutlineToggle.setAttribute("aria-pressed", String(allEnabled));
+      multiOutlineToggle.classList.toggle("mixed", mixedEnabled);
+      multiOutlineToggle.textContent = capableCount === 0
+        ? "Contorno · N/A"
+        : mixedEnabled
+          ? "Contorno · Mixto"
+          : allEnabled
+            ? "Contorno · ON"
+            : "Contorno · OFF";
+    }
+
+    if (multiOutlineStrengthInput && multiOutlineStrengthValue) {
+      if (!capableCount) {
+        multiOutlineStrengthInput.disabled = true;
+        multiOutlineStrengthValue.textContent = "N/A";
+      } else {
+        multiOutlineStrengthInput.disabled = false;
+        const strengths = outlineTargets.map((object) =>
+          clamp(
+            Number(object.userData.outlineStrength) || getDefaultOutlineStrength(object),
+            0,
+            1
+          )
+        );
+        const averageStrength =
+          strengths.reduce((sum, value) => sum + value, 0) / strengths.length;
+        const sameStrength = strengths.every(
+          (value) => Math.abs(value - strengths[0]) < 0.001
+        );
+        const strengthPct = Math.round(averageStrength * 100);
+        multiOutlineStrengthInput.value = String(strengthPct);
+        multiOutlineStrengthValue.textContent = sameStrength
+          ? `${Math.round(strengths[0] * 100)}%`
+          : `Mixta · ${strengthPct}%`;
+      }
+    }
   }
 }
 
@@ -796,6 +997,44 @@ function setMultiOpacity(value) {
   if (multiOpacityValue) {
     multiOpacityValue.textContent = `${Math.round(opacity * 100)}%`;
   }
+  refreshOutlineStates();
+}
+
+function setMultiOutlineEnabled(enabled) {
+  if (!isMultiSelectionReady()) return;
+
+  const targets = outlineCapableMultiTargets();
+  for (const object of targets) {
+    object.userData.outlineEnabled = Boolean(enabled);
+  }
+
+  refreshOutlineStates();
+  updateMultiSelectionPanel();
+}
+
+function toggleMultiOutlineEnabled() {
+  const targets = outlineCapableMultiTargets();
+  if (!targets.length) return;
+
+  const allEnabled = targets.every((object) => object.userData.outlineEnabled !== false);
+  setMultiOutlineEnabled(!allEnabled);
+  recordHistory("Contorno múltiple");
+}
+
+function setMultiOutlineStrength(value) {
+  if (!isMultiSelectionReady()) return;
+
+  const strength = clamp(Number(value), 0, 1);
+  const targets = outlineCapableMultiTargets();
+
+  for (const object of targets) {
+    object.userData.outlineStrength = strength;
+  }
+
+  if (multiOutlineStrengthValue) {
+    multiOutlineStrengthValue.textContent = `${Math.round(strength * 100)}%`;
+  }
+
   refreshOutlineStates();
 }
 
@@ -1281,8 +1520,15 @@ function applyObjectOutlineStyle(object, isSelected = false) {
     1
   );
 
+  const multiSelected = isMultiSelected(object);
   const opacity = enabled
-    ? clamp(isSelected ? Math.max(strength, 0.62) : strength, 0, 1)
+    ? clamp(
+        multiSelected
+          ? strength
+          : (isSelected ? Math.max(strength, 0.62) : strength),
+        0,
+        1
+      )
     : 0;
 
   const color = isSelected
@@ -3087,6 +3333,7 @@ function applySelectionConstraints() {
 
 function refreshSceneList() {
   sceneList.replaceChildren();
+  refreshFamilySelect();
 
   for (const object of state.objects) {
     const row = document.createElement("button");
@@ -3115,7 +3362,7 @@ function refreshSceneList() {
     }
 
     row.append(icon, name, type);
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
       if (placementController?.isActive()) {
         placementController.finish();
       }
@@ -3123,6 +3370,12 @@ function refreshSceneList() {
       if (state.multiSelectCollecting) {
         toggleMultiSelectedObject(object);
         if (mobilePanels?.isMobile()) mobilePanels.closePanels();
+        return;
+      }
+
+      if (isDesktopCtrlSelection(event)) {
+        event.preventDefault();
+        toggleDirectMultiSelection(object);
         return;
       }
 
@@ -3567,6 +3820,13 @@ function pickObject(event) {
     return;
   }
 
+  // PC: Control + clic funciona como selección múltiple de escritorio.
+  // Añade o quita el objeto tocado sin perder los demás.
+  if (isDesktopCtrlSelection(event)) {
+    if (hitRoot) toggleDirectMultiSelection(hitRoot);
+    return;
+  }
+
   if (isMultiSelectionReady()) {
     if (!hitRoot) {
       clearMultiSelection();
@@ -3918,6 +4178,20 @@ function installEvents() {
   });
   multiOpacityInput?.addEventListener("change", () => {
     if (isMultiSelectionReady()) recordHistory("Opacidad múltiple");
+  });
+
+  multiOutlineToggle?.addEventListener("click", toggleMultiOutlineEnabled);
+
+  multiOutlineStrengthInput?.addEventListener("input", (event) => {
+    setMultiOutlineStrength(Number(event.target.value) / 100);
+  });
+  multiOutlineStrengthInput?.addEventListener("change", () => {
+    if (isMultiSelectionReady()) recordHistory("Intensidad de contorno múltiple");
+  });
+
+  familySelect?.addEventListener("change", (event) => {
+    const key = String(event.target.value || "");
+    if (key) selectObjectFamily(key);
   });
 
   objectNameInput.addEventListener("input", () => {
