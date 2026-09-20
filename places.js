@@ -20,6 +20,22 @@ const CATEGORY_COLORS = Object.freeze({
   recepcion: 0x5f8268,
 });
 
+const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+function categoryColorHex(category) {
+  const value = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.general;
+  return `#${value.toString(16).padStart(6, "0")}`;
+}
+
+function normalizeColor(value, fallback = categoryColorHex("general")) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return COLOR_PATTERN.test(text) ? text.toLowerCase() : fallback.toLowerCase();
+}
+
+function roundDistance(value) {
+  return Math.round(value * 100) / 100;
+}
+
 function clampText(value, fallback, length) {
   const text = String(value ?? "").trim();
   return (text || fallback).slice(0, length);
@@ -47,6 +63,7 @@ function normalizePlace(item) {
     id: clampText(item.id, makeId("place"), 120),
     name: clampText(item.name, "Lugar", 80),
     category,
+    color: normalizeColor(item.color, categoryColorHex(category)),
     position: [Number.isFinite(x) ? x : 0, 0, Number.isFinite(z) ? z : 0],
     locked: Boolean(item.locked),
     visible: item.visible !== false,
@@ -59,31 +76,50 @@ function normalizePlace(item) {
 
 function createPinTexture() {
   const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 160;
+  canvas.width = 160;
+  canvas.height = 192;
   const ctx = canvas.getContext("2d");
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#303435";
-  ctx.lineWidth = 7;
+
+  // Soft shadow gives the flat billboard a small pseudo-3D read.
+  ctx.save();
+  ctx.translate(80, 72);
+  ctx.shadowColor = "rgba(0,0,0,.24)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 8;
+
+  const body = new Path2D();
+  body.arc(0, -10, 42, Math.PI * 0.15, Math.PI * 0.85, true);
+  body.bezierCurveTo(-43, 34, -24, 62, 0, 104);
+  body.bezierCurveTo(24, 62, 43, 34, 42, -10);
+  body.arc(0, -10, 42, 0.15 * Math.PI, 1.85 * Math.PI, true);
+  body.closePath();
+
+  const gradient = ctx.createLinearGradient(-34, -52, 36, 82);
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.42, "#eceff1");
+  gradient.addColorStop(1, "#9da4aa");
+  ctx.fillStyle = gradient;
+  ctx.fill(body);
+
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = "rgba(255,255,255,.86)";
+  ctx.lineWidth = 5;
+  ctx.stroke(body);
+
+  const inner = ctx.createRadialGradient(-9, -20, 3, 0, -10, 21);
+  inner.addColorStop(0, "#ffffff");
+  inner.addColorStop(1, "#c9ced2");
+  ctx.fillStyle = inner;
   ctx.beginPath();
-  ctx.arc(64, 55, 31, 0, Math.PI * 2);
+  ctx.arc(0, -10, 16, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.strokeStyle = "rgba(70,76,82,.28)";
+  ctx.lineWidth = 2;
   ctx.stroke();
-
-  ctx.fillStyle = "#303435";
-  ctx.beginPath();
-  ctx.moveTo(64, 148);
-  ctx.lineTo(43, 82);
-  ctx.lineTo(85, 82);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(64, 55, 11, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.restore();
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -157,29 +193,28 @@ export function createPlacesManager({
   scene.add(group);
 
   const pinTexture = createPinTexture();
-  const materials = new Map();
-  for (const [category] of CATEGORIES) {
-    const material = new THREE.SpriteMaterial({
-      map: pinTexture,
-      color: CATEGORY_COLORS[category] ?? CATEGORY_COLORS.general,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: false,
-      toneMapped: false,
-    });
-    materials.set(category, material);
-  }
+  const markerMaterials = new Map();
 
-  const selectedMaterial = new THREE.SpriteMaterial({
-    map: pinTexture,
-    color: 0x171717,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    sizeAttenuation: false,
-    toneMapped: false,
-  });
+  function markerMaterial(place) {
+    let material = markerMaterials.get(place.id);
+
+    if (!material) {
+      material = new THREE.SpriteMaterial({
+        map: pinTexture,
+        color: new THREE.Color(place.color || categoryColorHex(place.category)),
+        transparent: true,
+        opacity: 0.98,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false,
+        toneMapped: false,
+      });
+      markerMaterials.set(place.id, material);
+    }
+
+    material.color.set(place.color || categoryColorHex(place.category));
+    return material;
+  }
 
   const labelSprite = createLabelSprite();
   group.add(labelSprite);
@@ -202,6 +237,8 @@ export function createPlacesManager({
   const selectedSection = panel?.querySelector("#placeSelectedSection");
   const nameInput = panel?.querySelector("#placeName");
   const categorySelect = panel?.querySelector("#placeCategory");
+  const colorInput = panel?.querySelector("#placeColor");
+  const colorValue = panel?.querySelector("#placeColorValue");
   const moveButton = panel?.querySelector("#placeMoveButton");
   const lockButton = panel?.querySelector("#placeLockButton");
   const visibilityButton = panel?.querySelector("#placeVisibilityButton");
@@ -215,10 +252,10 @@ export function createPlacesManager({
     let sprite = sprites.get(place.id);
     if (sprite) return sprite;
 
-    sprite = new THREE.Sprite(materials.get(place.category) || materials.get("general"));
+    sprite = new THREE.Sprite(markerMaterial(place));
     sprite.name = `Lugar: ${place.name}`;
-    sprite.center.set(0.5, 0.05);
-    sprite.scale.set(0.075, 0.105, 1);
+    sprite.center.set(0.5, 0.06);
+    sprite.scale.set(0.052, 0.068, 1);
     sprite.renderOrder = 900;
     sprite.frustumCulled = false;
     sprite.userData.placeId = place.id;
@@ -236,8 +273,8 @@ export function createPlacesManager({
     }
 
     if (labelSprite.userData.labelText !== place.name) drawLabel(labelSprite, place.name);
-    labelSprite.position.set(place.position[0], 0.72, place.position[2]);
-    labelSprite.scale.set(0.27, 0.052, 1);
+    labelSprite.position.set(place.position[0], 0.54, place.position[2]);
+    labelSprite.scale.set(0.24, 0.046, 1);
     labelSprite.visible = true;
   }
 
@@ -247,16 +284,25 @@ export function createPlacesManager({
       if (valid.has(id)) continue;
       group.remove(sprite);
       sprites.delete(id);
+      markerMaterials.get(id)?.dispose?.();
+      markerMaterials.delete(id);
     }
 
     for (const place of places) {
       const sprite = spriteForPlace(place);
       sprite.name = `Lugar: ${place.name}`;
-      sprite.position.set(place.position[0], 0.07, place.position[2]);
+      sprite.position.set(place.position[0], 0.055, place.position[2]);
       sprite.visible = place.visible !== false;
-      sprite.material = place.id === selectedId
-        ? selectedMaterial
-        : materials.get(place.category) || materials.get("general");
+      sprite.material = markerMaterial(place);
+
+      const emphasized = place.id === selectedId
+        ? 1.16
+        : place.id === hoveredId
+          ? 1.08
+          : 1;
+
+      sprite.scale.set(0.052 * emphasized, 0.068 * emphasized, 1);
+      sprite.material.opacity = place.id === selectedId ? 1 : 0.96;
     }
 
     refreshLabel();
@@ -284,6 +330,7 @@ export function createPlacesManager({
       id: makeId("place"),
       name: `Lugar ${places.length + 1}`,
       category: "general",
+      color: categoryColorHex("general"),
       position: [Number(snapped.x) || 0, 0, Number(snapped.z) || 0],
       locked: false,
       visible: true,
@@ -358,7 +405,7 @@ export function createPlacesManager({
     const id = pick(event);
     if (id === hoveredId) return;
     hoveredId = id;
-    refreshLabel();
+    sync3D();
   }
 
   function updateList() {
@@ -415,6 +462,8 @@ export function createPlacesManager({
     if (place) {
       if (nameInput && document.activeElement !== nameInput) nameInput.value = place.name;
       if (categorySelect) categorySelect.value = place.category;
+      if (colorInput) colorInput.value = normalizeColor(place.color, categoryColorHex(place.category));
+      if (colorValue) colorValue.textContent = normalizeColor(place.color, categoryColorHex(place.category));
       if (moveButton) moveButton.disabled = place.locked;
       if (lockButton) lockButton.textContent = place.locked ? "Desbloquear" : "Bloquear";
       if (visibilityButton) visibilityButton.textContent = place.visible === false ? "Mostrar" : "Ocultar";
@@ -454,7 +503,22 @@ export function createPlacesManager({
   }
 
   function serialize() {
-    return clone(places);
+    return places.map((place) => ({
+      ...clone(place),
+      distanceMode: "straight-line-xz",
+      distances: places
+        .filter((other) => other.id !== place.id)
+        .map((other) => ({
+          toPlaceId: other.id,
+          toName: other.name,
+          meters: roundDistance(
+            Math.hypot(
+              Number(other.position?.[0] || 0) - Number(place.position?.[0] || 0),
+              Number(other.position?.[2] || 0) - Number(place.position?.[2] || 0)
+            )
+          ),
+        })),
+    }));
   }
 
   addButton?.addEventListener("click", () => {
@@ -493,12 +557,39 @@ export function createPlacesManager({
   categorySelect?.addEventListener("change", () => {
     const place = placeById(selectedId);
     if (!place) return;
+
+    const previousDefault = categoryColorHex(place.category);
+    const usedPreviousDefault =
+      normalizeColor(place.color, previousDefault) === previousDefault;
+
     place.category = CATEGORIES.some(([key]) => key === categorySelect.value)
       ? categorySelect.value
       : "general";
+
+    if (usedPreviousDefault) {
+      place.color = categoryColorHex(place.category);
+    }
+
     sync3D();
     updateUi();
     onMutate("Cambiar categoría del lugar");
+  });
+
+  colorInput?.addEventListener("input", () => {
+    const place = placeById(selectedId);
+    if (!place) return;
+    place.color = normalizeColor(colorInput.value, categoryColorHex(place.category));
+    if (colorValue) colorValue.textContent = place.color;
+    sync3D();
+  });
+
+  colorInput?.addEventListener("change", () => {
+    const place = placeById(selectedId);
+    if (!place) return;
+    place.color = normalizeColor(colorInput.value, categoryColorHex(place.category));
+    sync3D();
+    updateUi();
+    onMutate("Cambiar color del marcador");
   });
   listNode?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-place-id]");
@@ -516,8 +607,8 @@ export function createPlacesManager({
     sprites.clear();
     labelSprite.userData.texture?.dispose?.();
     labelSprite.material?.dispose?.();
-    for (const material of materials.values()) material.dispose?.();
-    selectedMaterial.dispose?.();
+    for (const material of markerMaterials.values()) material.dispose?.();
+    markerMaterials.clear();
     pinTexture.dispose?.();
     group.clear();
   }

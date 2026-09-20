@@ -2176,3 +2176,77 @@ input:disabled{
     font-size:.57rem;
   }
 }
+
+
+/* =========================================================
+   Parte 8.5 · iOS: evitar selección de texto / lupa accidental
+   ========================================================= */
+html,
+body,
+.app,
+.topbar,
+.workspace,
+.panel,
+.footer,
+button,
+label,
+span,
+p,
+strong,
+small,
+canvas {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#viewport,
+#viewport canvas {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Marcadores de lugares */
+.place-color-row{
+  display:grid;
+  grid-template-columns:54px minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+}
+.place-color-row input[type="color"]{
+  width:54px;
+  height:38px;
+  padding:3px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fff;
+}
+.place-color-row strong{
+  min-width:0;
+  color:#666;
+  font-size:.58rem;
+  font-variant-numeric:tabular-nums;
+}
+
+/* Unión visual: una acción, no dos recortes destructivos */
+.path-join-actions{
+  grid-template-columns:1fr 1fr;
+}
+@media (max-width:760px), (hover:none) and (pointer:coarse){
+  .path-join-actions{
+    grid-template-columns:1fr 1fr;
+  }
+  .path-join-actions button{
+    min-height:42px;
+    white-space:normal;
+  }
+}

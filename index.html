@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.4 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.5 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.4</title>
+  <title>Wizard Map Design parte 8.5</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.4.0" />
+  <link rel="stylesheet" href="./style.css?v=8.5.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.4</h1>
+          <h1>Wizard Map Design parte 8.5</h1>
         </div>
       </div>
 
@@ -396,24 +396,24 @@
               <div class="path-join-heading">
                 <div>
                   <span class="section-label">UNIÓN DE CAMINOS</span>
-                  <strong>Conectar / quitar sobrante</strong>
+                  <strong>Conectar visualmente</strong>
                 </div>
                 <span class="path-join-badge">2 caminos</span>
               </div>
 
               <div class="path-join-pair" aria-label="Caminos seleccionados">
                 <span><small>A</small><strong id="pathJoinLabelA">Camino A</strong></span>
-                <span class="path-join-arrow" aria-hidden="true">↔</span>
+                <span class="path-join-arrow" aria-hidden="true">＋</span>
                 <span><small>B</small><strong id="pathJoinLabelB">Camino B</strong></span>
               </div>
 
               <p class="path-join-note">
-                Elige cuál camino quieres modificar. Si entra de más en el otro, recorta ese extremo; si queda un hueco pequeño, lo extiende hasta tocarlo. El otro camino no se mueve.
+                Crea una pieza de unión del mismo material que rellena el hueco y cubre el solape interior. Ninguno de los dos caminos se recorta ni se elimina.
               </p>
 
               <div class="path-join-actions">
-                <button class="special-editor-button primary" id="pathJoinAToB" type="button">Ajustar A → B</button>
-                <button class="special-editor-button" id="pathJoinBToA" type="button">Ajustar B → A</button>
+                <button class="special-editor-button primary" id="pathJoinCreate" type="button">Unir caminos</button>
+                <button class="special-editor-button" id="pathJoinRemove" type="button" disabled>Quitar unión</button>
               </div>
 
               <p class="path-join-message" id="pathJoinMessage" data-tone="neutral"></p>
@@ -548,6 +548,13 @@
                   <option value="spa">Spa</option>
                   <option value="recepcion">Recepción</option>
                 </select>
+              </label>
+              <label class="field field-wide">
+                <span>Color del marcador</span>
+                <div class="place-color-row">
+                  <input id="placeColor" type="color" value="#59656f" aria-label="Color del marcador" />
+                  <strong id="placeColorValue">#59656f</strong>
+                </div>
               </label>
               <div class="special-editor-actions wrap">
                 <button class="special-editor-button" id="placeMoveButton" type="button">Mover</button>
@@ -894,18 +901,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.4 estén en el repositorio.</p>
+          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.5 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.4</span>
+      <span>Wizard Map Design parte 8.5</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.4.0"></script>
+  <script type="module" src="./app.js?v=8.5.0"></script>
 </body>
 </html>

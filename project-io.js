@@ -1,10 +1,11 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 6;
+const VERSION = 7;
 const MAX_OBJECTS = 10000;
 const MAX_PLACES = 2000;
 const MAX_ROUTE_NODES = 10000;
 const MAX_ROUTE_EDGES = 30000;
 const MAX_SAVED_ROUTES = 2000;
+const MAX_PATH_CONNECTIONS = 5000;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -54,6 +55,10 @@ function validatePlaces(input) {
       id,
       name: cleanText(item.name, `Lugar ${index + 1}`, 80),
       category: cleanText(item.category, "general", 40),
+      color:
+        typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color.trim())
+          ? item.color.trim().toLowerCase()
+          : "#59656f",
       position,
       locked: Boolean(item.locked),
       visible: item.visible === undefined ? true : Boolean(item.visible),
@@ -147,12 +152,57 @@ function validateRouteNetwork(input) {
   return { nodes, edges, routes: validRoutes };
 }
 
+
+function validatePathConnections(input, objects) {
+  const source = input === undefined ? [] : input;
+
+  if (!Array.isArray(source)) {
+    throw new Error("La lista de uniones de caminos no es válida.");
+  }
+
+  if (source.length > MAX_PATH_CONNECTIONS) {
+    throw new Error(`El proyecto contiene demasiadas uniones de caminos (${source.length}).`);
+  }
+
+  const paths = new Set(
+    objects
+      .filter((object) => object.editorType === "prop" && object.propType === "path" && object.id)
+      .map((object) => object.id)
+  );
+
+  const usedIds = new Set();
+  const usedPairs = new Set();
+  const result = [];
+
+  source.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+
+    const a = cleanText(item.a, "", 120);
+    const b = cleanText(item.b, "", 120);
+
+    if (!a || !b || a === b || !paths.has(a) || !paths.has(b)) return;
+
+    const pair = a < b ? `${a}::${b}` : `${b}::${a}`;
+    if (usedPairs.has(pair)) return;
+    usedPairs.add(pair);
+
+    let id = cleanText(item.id, `path-link-${index + 1}`, 120);
+    if (usedIds.has(id)) id = `path-link-${index + 1}`;
+    usedIds.add(id);
+
+    result.push({ id, a, b });
+  });
+
+  return result;
+}
+
 export function createProjectDocument({
   objects,
   settings,
   camera,
   places = [],
   routeNetwork = { nodes: [], edges: [], routes: [] },
+  pathConnections = [],
 }) {
   return {
     schema: SCHEMA,
@@ -167,6 +217,7 @@ export function createProjectDocument({
     objects,
     places,
     routeNetwork,
+    pathConnections,
   };
 }
 
@@ -184,7 +235,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, 2, 3, 4, 5, VERSION].includes(Number(input.version))) {
+  if (![1, 2, 3, 4, 5, 6, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -392,6 +443,7 @@ export function validateProjectDocument(
     objects,
     places: validatePlaces(input.places),
     routeNetwork: validateRouteNetwork(input.routeNetwork),
+    pathConnections: validatePathConnections(input.pathConnections, objects),
   };
 }
 

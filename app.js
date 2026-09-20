@@ -18,11 +18,11 @@ import {
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.2.0";
+} from "./project-io.js?v=8.5.0";
 import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
-import { createPlacesManager } from "./places.js?v=8.0.0";
+import { createPlacesManager } from "./places.js?v=8.5.0";
 import { createRouteEditor } from "./route-editor.js?v=8.2.0";
-import { isPathObject, adjustPathToPath } from "./path-connect.js?v=8.4.0";
+import { isPathObject, createPathConnectionManager } from "./path-connect.js?v=8.5.0";
 
 window.__RMB_READY__ = false;
 
@@ -151,8 +151,8 @@ const familySelect = document.querySelector("#familySelect");
 const pathJoinTools = document.querySelector("#pathJoinTools");
 const pathJoinLabelA = document.querySelector("#pathJoinLabelA");
 const pathJoinLabelB = document.querySelector("#pathJoinLabelB");
-const pathJoinAToBButton = document.querySelector("#pathJoinAToB");
-const pathJoinBToAButton = document.querySelector("#pathJoinBToA");
+const pathJoinCreateButton = document.querySelector("#pathJoinCreate");
+const pathJoinRemoveButton = document.querySelector("#pathJoinRemove");
 const pathJoinMessage = document.querySelector("#pathJoinMessage");
 
 
@@ -247,6 +247,7 @@ let oneSidedScaleController;
 let axisOverlay;
 let placesManager;
 let routeEditor;
+let pathConnectionManager;
 let multiScaleProxy;
 let overlayDirty = true;
 let resizeObserver;
@@ -507,31 +508,29 @@ function updatePathJoinTools() {
   }
 
   const [a, b] = pair;
+  const connected = Boolean(pathConnectionManager?.hasPair?.(a, b));
 
   if (pathJoinLabelA) pathJoinLabelA.textContent = a.name;
   if (pathJoinLabelB) pathJoinLabelB.textContent = b.name;
 
-  if (pathJoinAToBButton) {
-    pathJoinAToBButton.textContent = `Ajustar ${a.name} → ${b.name}`;
-    pathJoinAToBButton.disabled = isLocked(a);
+  if (pathJoinCreateButton) {
+    pathJoinCreateButton.textContent = connected ? "Actualizar unión" : "Unir caminos";
+    pathJoinCreateButton.disabled = false;
   }
 
-  if (pathJoinBToAButton) {
-    pathJoinBToAButton.textContent = `Ajustar ${b.name} → ${a.name}`;
-    pathJoinBToAButton.disabled = isLocked(b);
+  if (pathJoinRemoveButton) {
+    pathJoinRemoveButton.disabled = !connected;
   }
 
-  if (isLocked(a) && isLocked(b)) {
-    setPathJoinMessage("Los dos caminos están bloqueados. Desbloquea el que quieras modificar.", "warning");
-  } else {
-    setPathJoinMessage(
-      "El camino elegido se recorta si sobra o se extiende si hay un pequeño hueco. El otro queda intacto.",
-      "neutral"
-    );
-  }
+  setPathJoinMessage(
+    connected
+      ? "Estos caminos ya tienen una unión visual. Puedes actualizarla si los moviste o quitarla."
+      : "La unión conserva ambos caminos y añade una pieza central que rellena huecos y tapa el solape interior.",
+    connected ? "success" : "neutral"
+  );
 }
 
-function adjustSelectedPaths(direction) {
+function createSelectedPathConnection() {
   const pair = selectedPathPair();
 
   if (!pair) {
@@ -539,37 +538,42 @@ function adjustSelectedPaths(direction) {
     return;
   }
 
-  const [a, b] = pair;
-  const target = direction === "b-to-a" ? b : a;
-  const other = direction === "b-to-a" ? a : b;
+  const result = pathConnectionManager?.connect?.(
+    pair[0],
+    pair[1],
+    state.objects
+  );
 
-  if (isLocked(target)) {
-    setPathJoinMessage(`${target.name} está bloqueado.`, "warning");
+  if (!result?.ok) {
+    setPathJoinMessage(result?.message || "No se pudo crear la unión.", "warning");
     return;
   }
 
-  const result = adjustPathToPath(target, other);
-
-  if (!result.ok) {
-    setPathJoinMessage(result.message, "warning");
-    return;
-  }
-
-  if (!result.changed) {
-    setPathJoinMessage(result.message, "success");
-    return;
-  }
-
-  target.updateMatrixWorld(true);
-  refreshOutlineStates();
-  positionMultiScaleProxy();
-  updateMultiSelectionUi();
-  updateMultiSelectionPanel();
-  refreshSceneList();
+  updatePathJoinTools();
   markOverlayDirty();
-  recordHistory("Conectar caminos");
-
+  recordHistory(result.existing ? "Actualizar unión de caminos" : "Unir caminos");
   setPathJoinMessage(result.message, "success");
+}
+
+function removeSelectedPathConnection() {
+  const pair = selectedPathPair();
+
+  if (!pair) {
+    setPathJoinMessage("Selecciona exactamente dos caminos.", "warning");
+    return;
+  }
+
+  const removed = pathConnectionManager?.removePair?.(pair[0], pair[1]);
+
+  if (!removed) {
+    setPathJoinMessage("Estos caminos no tienen una unión guardada.", "warning");
+    return;
+  }
+
+  updatePathJoinTools();
+  markOverlayDirty();
+  recordHistory("Quitar unión de caminos");
+  setPathJoinMessage("Unión retirada. Los dos caminos originales permanecen intactos.", "success");
 }
 
 function familyKeyForObject(object) {
@@ -827,8 +831,12 @@ function applyMultiScaleDrag() {
 
   }
 
-  // No reconstruimos listas, contornos ni UI durante cada pixel de arrastre.
-  // Los contornos son hijos del mesh y heredan la escala automáticamente.
+  for (const record of snapshot.objects) {
+    pathConnectionManager?.updateForObject?.(record.object, state.objects);
+  }
+
+  // La unión de caminos solo reconstruye las piezas pequeñas implicadas.
+  // No se reconstruye el resto de la escena.
   return true;
 }
 
@@ -1311,6 +1319,9 @@ function setObjectOpacity(object, value) {
   });
 
   applyObjectOutlineStyle(object, object === state.selected);
+  if (isPathObject(object)) {
+    pathConnectionManager?.updateForObject?.(object, state.objects);
+  }
 }
 
 function setObjectLocked(object, locked) {
@@ -1958,6 +1969,7 @@ function captureHistorySnapshot() {
     objects: state.objects.map(serializeEditorObject),
     places: placesManager?.serialize?.() || [],
     routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
+    pathConnections: pathConnectionManager?.serialize?.() || [],
     nextBuildingNumber: state.nextBuildingNumber,
     nextPropNumbers: { ...state.nextPropNumbers },
     selectedId: state.selected?.userData?.id || null,
@@ -2008,6 +2020,7 @@ function applyHistorySnapshot(snapshot) {
   }
   placesManager?.restore?.(snapshot.places || []);
   routeEditor?.restore?.(snapshot.routeNetwork || { nodes: [], edges: [], routes: [] });
+  pathConnectionManager?.restore?.(snapshot.pathConnections || [], state.objects);
   state.nextBuildingNumber = snapshot.nextBuildingNumber || 1;
   state.nextPropNumbers = { ...(snapshot.nextPropNumbers || {}) };
   const selected = state.objects.find((item) => item.userData.id === snapshot.selectedId);
@@ -2301,10 +2314,12 @@ function serializeProject() {
     },
     places: placesManager?.serialize?.() || [],
     routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
+    pathConnections: pathConnectionManager?.serialize?.() || [],
   });
 }
 
 function disposeEditorObject(object) {
+  pathConnectionManager?.removeForObject?.(object);
   scene.remove(object);
 
   object.traverse((child) => {
@@ -2332,6 +2347,7 @@ function disposeEditorObject(object) {
 
 function clearEditorObjects() {
   transformControls.detach();
+  pathConnectionManager?.clear?.();
   state.multiSelected = [];
   state.multiSelectCollecting = false;
   state.multiScaleSnapshot = null;
@@ -2558,6 +2574,7 @@ function restoreProject(project) {
   restoreProjectSettings(project);
   placesManager?.restore?.(project.places || []);
   routeEditor?.restore?.(project.routeNetwork || { nodes: [], edges: [], routes: [] });
+  pathConnectionManager?.restore?.(project.pathConnections || [], state.objects);
   state.editSection = "objects";
   updateEditorSectionUi();
 
@@ -2733,6 +2750,8 @@ function createScene() {
       updateSpecialModeToolbar("routes", mode, message);
     },
   });
+
+  pathConnectionManager = createPathConnectionManager({ scene });
 
   updateEditorSectionUi();
 
@@ -3280,6 +3299,9 @@ function createSelectionBox(object) {
 }
 
 function updateSelectionBox() {
+  if (state.selected) {
+    pathConnectionManager?.updateForObject?.(state.selected, state.objects);
+  }
   refreshOutlineStates();
   markOverlayDirty();
   updateOverlayWidgets();
@@ -4218,6 +4240,20 @@ function setGridVisible(visible) {
 
 function installEvents() {
   resizeObserver = new ResizeObserver(resizeViewport);
+
+  const isEditableTarget = (target) =>
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    Boolean(target?.closest?.('[contenteditable="true"]'));
+
+  document.addEventListener("selectstart", (event) => {
+    if (!isEditableTarget(event.target)) event.preventDefault();
+  });
+
+  document.addEventListener("dragstart", (event) => {
+    if (!isEditableTarget(event.target)) event.preventDefault();
+  });
   resizeObserver.observe(viewport);
 
   // En PC el botón derecho rota la cámara. Evitamos el menú contextual.
@@ -4302,13 +4338,8 @@ function installEvents() {
     if (key) selectObjectFamily(key);
   });
 
-  pathJoinAToBButton?.addEventListener("click", () => {
-    adjustSelectedPaths("a-to-b");
-  });
-
-  pathJoinBToAButton?.addEventListener("click", () => {
-    adjustSelectedPaths("b-to-a");
-  });
+  pathJoinCreateButton?.addEventListener("click", createSelectedPathConnection);
+  pathJoinRemoveButton?.addEventListener("click", removeSelectedPathConnection);
 
   objectNameInput.addEventListener("input", () => {
     if (!state.selected) return;
