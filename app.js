@@ -142,6 +142,8 @@ const multiSelectStartButton = document.querySelector("#multiSelectStart");
 const multiSelectionProperties = document.querySelector("#multiSelectionProperties");
 const multiSelectionCount = document.querySelector("#multiSelectionCount");
 const multiSelectionLockedCount = document.querySelector("#multiSelectionLockedCount");
+const multiHeightInput = document.querySelector("#multiHeight");
+const multiHeightStatus = document.querySelector("#multiHeightStatus");
 const multiOpacityInput = document.querySelector("#multiOpacity");
 const multiOpacityValue = document.querySelector("#multiOpacityValue");
 const multiSelectionClearButton = document.querySelector("#multiSelectionClear");
@@ -736,6 +738,75 @@ function multiSelectionBounds(objects = state.multiSelected) {
   return hasBox ? box : null;
 }
 
+function objectWorldHeight(object) {
+  if (!object || !state.objects.includes(object)) return null;
+
+  object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty() || !Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
+    return null;
+  }
+
+  return Math.max(0.0001, box.max.y - box.min.y);
+}
+
+function setMultiHeightExact(value) {
+  if (!isMultiSelectionReady()) return false;
+
+  const targetHeight = Number(value);
+  if (!Number.isFinite(targetHeight)) return false;
+
+  const height = clamp(targetHeight, 0.05, 100);
+  const targets = unlockedMultiTargets();
+  if (!targets.length) return false;
+
+  let changed = false;
+
+  for (const object of targets) {
+    object.updateWorldMatrix(true, true);
+    const before = new THREE.Box3().setFromObject(object);
+
+    if (
+      before.isEmpty() ||
+      !Number.isFinite(before.min.y) ||
+      !Number.isFinite(before.max.y)
+    ) {
+      continue;
+    }
+
+    const currentHeight = Math.max(0.0001, before.max.y - before.min.y);
+    const currentScaleY = Math.max(0.0001, Math.abs(object.scale.y));
+    const nextScaleY = clamp(
+      currentScaleY * (height / currentHeight),
+      0.0001,
+      100
+    );
+
+    object.scale.y = nextScaleY * mirrorSign(object, "y");
+    object.updateMatrixWorld(true);
+
+    // Igual que la flecha verde: la cara/base inferior se queda donde estaba.
+    const after = new THREE.Box3().setFromObject(object);
+    if (Number.isFinite(after.min.y)) {
+      object.position.y += before.min.y - after.min.y;
+      object.updateMatrixWorld(true);
+    }
+
+    pathConnectionManager?.updateForObject?.(object, state.objects);
+    applyObjectOutlineStyle(object, true);
+    changed = true;
+  }
+
+  if (!changed) return false;
+
+  positionMultiScaleProxy();
+  configureMultiScaleTransform();
+  refreshOutlineStates();
+  markOverlayDirty();
+  updateMultiSelectionPanel();
+  return true;
+}
+
 function ensureMultiScaleProxy() {
   if (multiScaleProxy) return multiScaleProxy;
   multiScaleProxy = new THREE.Object3D();
@@ -893,6 +964,51 @@ function updateMultiSelectionPanel() {
   }
 
   if (isMultiSelectionReady() && count) {
+    const editableHeightTargets = unlockedMultiTargets();
+    const heights = editableHeightTargets
+      .map(objectWorldHeight)
+      .filter((value) => Number.isFinite(value));
+
+    if (multiHeightInput) {
+      multiHeightInput.disabled = heights.length === 0;
+
+      if (document.activeElement !== multiHeightInput) {
+        if (!heights.length) {
+          multiHeightInput.value = "";
+          multiHeightInput.placeholder = "Bloqueado";
+        } else {
+          const firstHeight = heights[0];
+          const sameHeight = heights.every(
+            (value) => Math.abs(value - firstHeight) < 0.005
+          );
+
+          if (sameHeight) {
+            multiHeightInput.value = firstHeight.toFixed(2);
+            multiHeightInput.placeholder = "";
+          } else {
+            const minHeight = Math.min(...heights);
+            const maxHeight = Math.max(...heights);
+            multiHeightInput.value = "";
+            multiHeightInput.placeholder =
+              `Mixta · ${minHeight.toFixed(2)}–${maxHeight.toFixed(2)} m`;
+          }
+        }
+      }
+    }
+
+    if (multiHeightStatus) {
+      if (!heights.length) {
+        multiHeightStatus.textContent =
+          "Desbloquea al menos un objeto para cambiar la altura.";
+      } else if (lockedCount) {
+        multiHeightStatus.textContent =
+          `Se aplicará a ${heights.length} objeto${heights.length === 1 ? "" : "s"} desbloqueado${heights.length === 1 ? "" : "s"}; ${lockedCount} bloqueado${lockedCount === 1 ? "" : "s"} no cambia${lockedCount === 1 ? "" : "n"}.`;
+      } else {
+        multiHeightStatus.textContent =
+          `Escribe una altura y los ${heights.length} objetos recibirán exactamente esa medida, conservando su base.`;
+      }
+    }
+
     const opacities = targets.map(getObjectOpacity);
     const average = opacities.reduce((sum, value) => sum + value, 0) / opacities.length;
     const same = opacities.every((value) => Math.abs(value - opacities[0]) < 0.001);
@@ -3009,6 +3125,7 @@ function createTransformControls() {
     if (isMultiSelectionReady() && transformControls.object === multiScaleProxy) {
       const changed = Boolean(state.pendingTransformChange);
       endMultiScaleDrag();
+      updateMultiSelectionPanel();
       if (changed) {
         recordHistory("Altura Y múltiple");
       }
@@ -4347,6 +4464,25 @@ function installEvents() {
 
   multiSelectStartButton?.addEventListener("click", startMultiSelectMode);
   multiSelectionClearButton?.addEventListener("click", () => clearMultiSelection());
+
+  multiHeightInput?.addEventListener("input", (event) => {
+    const raw = String(event.target.value || "").trim();
+    if (!raw) return;
+    setMultiHeightExact(Number(raw));
+  });
+  multiHeightInput?.addEventListener("change", (event) => {
+    const raw = String(event.target.value || "").trim();
+    if (!raw || !isMultiSelectionReady()) {
+      updateMultiSelectionPanel();
+      return;
+    }
+
+    const changed = setMultiHeightExact(Number(raw));
+    if (changed) {
+      recordHistory("Altura exacta múltiple");
+    }
+    updateMultiSelectionPanel();
+  });
 
   multiOpacityInput?.addEventListener("input", (event) => {
     setMultiOpacity(Number(event.target.value) / 100);

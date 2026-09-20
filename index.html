@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.6 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.7 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.6</title>
+  <title>Wizard Map Design parte 8.7</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.6.0" />
+  <link rel="stylesheet" href="./style.css?v=8.7.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.6</h1>
+          <h1>Wizard Map Design parte 8.7</h1>
         </div>
       </div>
 
@@ -360,8 +360,27 @@
               <span class="multi-height-arrow" aria-hidden="true">↑</span>
               <div>
                 <strong>Altura Y · base fija</strong>
-                <small>La flecha verde cambia solo la altura. X/Z, posición y rotación permanecen intactos.</small>
+                <small>Arrastra la flecha verde o escribe una altura exacta. X/Z, posición y rotación permanecen intactos.</small>
               </div>
+            </div>
+
+            <div class="multi-height-input">
+              <label class="field field-wide">
+                <span>Altura exacta del grupo · m</span>
+                <input
+                  id="multiHeight"
+                  type="number"
+                  min="0.05"
+                  max="100"
+                  step="0.01"
+                  inputmode="decimal"
+                  enterkeyhint="done"
+                  placeholder="Mixta"
+                />
+              </label>
+              <small id="multiHeightStatus">
+                Escribe una medida para dar exactamente la misma altura a todos los objetos desbloqueados.
+              </small>
             </div>
 
             <label class="slider-field">
@@ -420,7 +439,7 @@
             </section>
 
             <p class="multi-selection-help">
-              Altura Y, opacidad, contorno, bloqueo, eliminar y Espejo X/Y/Z pueden aplicarse a toda la selección. En PC, mantén Control y haz clic para añadir o quitar objetos sin perder los demás.
+              Altura Y por flecha o medida exacta, opacidad, contorno, bloqueo, eliminar y Espejo X/Y/Z pueden aplicarse a toda la selección. En PC, mantén Control y haz clic para añadir o quitar objetos sin perder los demás.
             </p>
           </section>
 
@@ -945,12 +964,12 @@
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.6</span>
+      <span>Wizard Map Design parte 8.7</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.6.1"></script>
+  <script type="module" src="./app.js?v=8.7.0"></script>
 </body>
 </html>
