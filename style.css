@@ -2060,3 +2060,119 @@ input:disabled{
     align-items:flex-start;
   }
 }
+
+
+/* =========================================================
+   Parte 8.4 · conexión segura entre dos caminos rectos
+   ========================================================= */
+.path-join-tools{
+  display:grid;
+  gap:9px;
+  padding:10px;
+  border:1px solid rgba(23,23,23,.10);
+  border-radius:12px;
+  background:rgba(255,255,255,.54);
+}
+.path-join-tools.hidden{
+  display:none;
+}
+.path-join-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.path-join-heading>div{
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+.path-join-heading strong{
+  font-size:.64rem;
+}
+.path-join-badge{
+  flex:0 0 auto;
+  padding:4px 7px;
+  border-radius:999px;
+  background:rgba(61,132,75,.10);
+  color:#3d844b;
+  font-size:.49rem;
+  font-weight:700;
+}
+.path-join-pair{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;
+  gap:7px;
+}
+.path-join-pair>span:not(.path-join-arrow){
+  min-width:0;
+  display:grid;
+  gap:1px;
+  padding:7px 8px;
+  border:1px solid rgba(23,23,23,.08);
+  border-radius:9px;
+  background:rgba(255,255,255,.70);
+}
+.path-join-pair small{
+  color:#888;
+  font-size:.45rem;
+  font-weight:700;
+}
+.path-join-pair strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.56rem;
+}
+.path-join-arrow{
+  color:#858585;
+  font-size:.7rem;
+}
+.path-join-note{
+  margin:0;
+  color:#717171;
+  font-size:.51rem;
+  line-height:1.45;
+}
+.path-join-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.path-join-actions button{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.path-join-message{
+  min-height:1.15em;
+  margin:0;
+  color:#777;
+  font-size:.50rem;
+  line-height:1.35;
+}
+.path-join-message[data-tone="success"]{
+  color:#347641;
+}
+.path-join-message[data-tone="warning"]{
+  color:#a2672d;
+}
+
+@media (max-width:760px), (hover:none) and (pointer:coarse){
+  .path-join-tools{
+    padding:11px;
+    gap:10px;
+  }
+  .path-join-actions{
+    grid-template-columns:1fr;
+  }
+  .path-join-actions button{
+    min-height:40px;
+  }
+  .path-join-note,
+  .path-join-message{
+    font-size:.57rem;
+  }
+}

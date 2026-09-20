@@ -22,6 +22,7 @@ import {
 import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
 import { createPlacesManager } from "./places.js?v=8.0.0";
 import { createRouteEditor } from "./route-editor.js?v=8.2.0";
+import { isPathObject, adjustPathToPath } from "./path-connect.js?v=8.4.0";
 
 window.__RMB_READY__ = false;
 
@@ -147,6 +148,12 @@ const multiOutlineStrengthInput = document.querySelector("#multiOutlineStrength"
 const multiOutlineStrengthValue = document.querySelector("#multiOutlineStrengthValue");
 const multiOutlineApplies = document.querySelector("#multiOutlineApplies");
 const familySelect = document.querySelector("#familySelect");
+const pathJoinTools = document.querySelector("#pathJoinTools");
+const pathJoinLabelA = document.querySelector("#pathJoinLabelA");
+const pathJoinLabelB = document.querySelector("#pathJoinLabelB");
+const pathJoinAToBButton = document.querySelector("#pathJoinAToB");
+const pathJoinBToAButton = document.querySelector("#pathJoinBToA");
+const pathJoinMessage = document.querySelector("#pathJoinMessage");
 
 
 let positionXNumberInput = null;
@@ -466,6 +473,103 @@ function unlockedMultiTargets() {
 
 function outlineCapableMultiTargets() {
   return state.multiSelected.filter((object) => objectSupportsOutline(object));
+}
+
+function selectedPathPair() {
+  if (!isMultiSelectionReady() || state.multiSelected.length !== 2) {
+    return null;
+  }
+
+  const [a, b] = state.multiSelected;
+  if (!isPathObject(a) || !isPathObject(b)) {
+    return null;
+  }
+
+  return [a, b];
+}
+
+function setPathJoinMessage(message = "", tone = "neutral") {
+  if (!pathJoinMessage) return;
+
+  pathJoinMessage.textContent = message;
+  pathJoinMessage.dataset.tone = tone;
+}
+
+function updatePathJoinTools() {
+  if (!pathJoinTools) return;
+
+  const pair = selectedPathPair();
+  pathJoinTools.classList.toggle("hidden", !pair);
+
+  if (!pair) {
+    setPathJoinMessage("");
+    return;
+  }
+
+  const [a, b] = pair;
+
+  if (pathJoinLabelA) pathJoinLabelA.textContent = a.name;
+  if (pathJoinLabelB) pathJoinLabelB.textContent = b.name;
+
+  if (pathJoinAToBButton) {
+    pathJoinAToBButton.textContent = `Ajustar ${a.name} → ${b.name}`;
+    pathJoinAToBButton.disabled = isLocked(a);
+  }
+
+  if (pathJoinBToAButton) {
+    pathJoinBToAButton.textContent = `Ajustar ${b.name} → ${a.name}`;
+    pathJoinBToAButton.disabled = isLocked(b);
+  }
+
+  if (isLocked(a) && isLocked(b)) {
+    setPathJoinMessage("Los dos caminos están bloqueados. Desbloquea el que quieras modificar.", "warning");
+  } else {
+    setPathJoinMessage(
+      "El camino elegido se recorta si sobra o se extiende si hay un pequeño hueco. El otro queda intacto.",
+      "neutral"
+    );
+  }
+}
+
+function adjustSelectedPaths(direction) {
+  const pair = selectedPathPair();
+
+  if (!pair) {
+    setPathJoinMessage("Selecciona exactamente dos caminos.", "warning");
+    return;
+  }
+
+  const [a, b] = pair;
+  const target = direction === "b-to-a" ? b : a;
+  const other = direction === "b-to-a" ? a : b;
+
+  if (isLocked(target)) {
+    setPathJoinMessage(`${target.name} está bloqueado.`, "warning");
+    return;
+  }
+
+  const result = adjustPathToPath(target, other);
+
+  if (!result.ok) {
+    setPathJoinMessage(result.message, "warning");
+    return;
+  }
+
+  if (!result.changed) {
+    setPathJoinMessage(result.message, "success");
+    return;
+  }
+
+  target.updateMatrixWorld(true);
+  refreshOutlineStates();
+  positionMultiScaleProxy();
+  updateMultiSelectionUi();
+  updateMultiSelectionPanel();
+  refreshSceneList();
+  markOverlayDirty();
+  recordHistory("Conectar caminos");
+
+  setPathJoinMessage(result.message, "success");
 }
 
 function familyKeyForObject(object) {
@@ -844,6 +948,8 @@ function updateMultiSelectionPanel() {
       }
     }
   }
+
+  updatePathJoinTools();
 }
 
 function updateMultiSelectionUi() {
@@ -911,6 +1017,8 @@ function clearMultiSelection({ resetMode = true } = {}) {
   quickAnchorScaleButton?.classList.remove("hidden");
   quickDuplicateButton?.classList.remove("hidden");
   multiSelectionProperties?.classList.add("hidden");
+  pathJoinTools?.classList.add("hidden");
+  setPathJoinMessage("");
 
   if (resetMode) {
     state.transformMode = "translate";
@@ -4192,6 +4300,14 @@ function installEvents() {
   familySelect?.addEventListener("change", (event) => {
     const key = String(event.target.value || "");
     if (key) selectObjectFamily(key);
+  });
+
+  pathJoinAToBButton?.addEventListener("click", () => {
+    adjustSelectedPaths("a-to-b");
+  });
+
+  pathJoinBToAButton?.addEventListener("click", () => {
+    adjustSelectedPaths("b-to-a");
   });
 
   objectNameInput.addEventListener("input", () => {
