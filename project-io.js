@@ -269,8 +269,6 @@ export function createProjectDocument({
   pathConnections = [],
   viewCenters = [],
 }) {
-  const validatedRouteNetwork = validateRouteNetwork(input.routeNetwork);
-
   return {
     schema: SCHEMA,
     version: VERSION,
@@ -409,6 +407,10 @@ export function validateProjectDocument(
   const camera = input.camera && typeof input.camera === "object"
     ? input.camera
     : {};
+
+  // Parte 8.6.1: validar la red ANTES de usarla en el retorno.
+  // La 8.6 referenciaba validatedRouteNetwork sin declararla aquí.
+  const validatedRouteNetwork = validateRouteNetwork(input.routeNetwork);
 
   return {
     schema: SCHEMA,

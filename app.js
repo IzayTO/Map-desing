@@ -18,7 +18,7 @@ import {
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.6.0";
+} from "./project-io.js?v=8.6.1";
 import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
 import { createPlacesManager } from "./places.js?v=8.6.0";
 import { createRouteEditor } from "./route-editor.js?v=8.2.0";
