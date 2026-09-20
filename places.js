@@ -74,51 +74,60 @@ function normalizePlace(item) {
   };
 }
 
-function createPinTexture() {
+function createPinTexture(colorHex = "#59656f") {
   const canvas = document.createElement("canvas");
   canvas.width = 160;
   canvas.height = 192;
   const ctx = canvas.getContext("2d");
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const base = new THREE.Color(normalizeColor(colorHex));
+  const light = base.clone().lerp(new THREE.Color(0xffffff), 0.28);
+  const dark = base.clone().lerp(new THREE.Color(0x000000), 0.18);
+  const css = (color) => `#${color.getHexString()}`;
 
-  // Soft shadow gives the flat billboard a small pseudo-3D read.
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  ctx.translate(80, 72);
-  ctx.shadowColor = "rgba(0,0,0,.24)";
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 8;
+  ctx.translate(80, 70);
+
+  // Sombra corta: da volumen sin convertir el marcador en una pieza 3D.
+  ctx.shadowColor = "rgba(0,0,0,.22)";
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 6;
 
   const body = new Path2D();
-  body.arc(0, -10, 42, Math.PI * 0.15, Math.PI * 0.85, true);
-  body.bezierCurveTo(-43, 34, -24, 62, 0, 104);
-  body.bezierCurveTo(24, 62, 43, 34, 42, -10);
-  body.arc(0, -10, 42, 0.15 * Math.PI, 1.85 * Math.PI, true);
+  body.moveTo(0, -48);
+  body.bezierCurveTo(-37, -48, -55, -25, -55, 6);
+  body.bezierCurveTo(-55, 43, -25, 72, 0, 111);
+  body.bezierCurveTo(25, 72, 55, 43, 55, 6);
+  body.bezierCurveTo(55, -25, 37, -48, 0, -48);
   body.closePath();
 
-  const gradient = ctx.createLinearGradient(-34, -52, 36, 82);
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(0.42, "#eceff1");
-  gradient.addColorStop(1, "#9da4aa");
+  const gradient = ctx.createLinearGradient(-38, -48, 42, 92);
+  gradient.addColorStop(0, css(light));
+  gradient.addColorStop(0.48, css(base));
+  gradient.addColorStop(1, css(dark));
   ctx.fillStyle = gradient;
   ctx.fill(body);
 
   ctx.shadowColor = "transparent";
-  ctx.strokeStyle = "rgba(255,255,255,.86)";
-  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(255,255,255,.78)";
+  ctx.lineWidth = 4;
   ctx.stroke(body);
 
-  const inner = ctx.createRadialGradient(-9, -20, 3, 0, -10, 21);
-  inner.addColorStop(0, "#ffffff");
-  inner.addColorStop(1, "#c9ced2");
-  ctx.fillStyle = inner;
+  // Centro SIEMPRE blanco. Ya no se tinta junto con el cuerpo.
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(0, -10, 16, 0, Math.PI * 2);
+  ctx.arc(0, 4, 16, 0, Math.PI * 2);
   ctx.fill();
-
-  ctx.strokeStyle = "rgba(70,76,82,.28)";
+  ctx.strokeStyle = "rgba(0,0,0,.13)";
   ctx.lineWidth = 2;
   ctx.stroke();
+
+  // Brillo pequeño para que se lea como semi-3D desde lejos.
+  ctx.fillStyle = "rgba(255,255,255,.34)";
+  ctx.beginPath();
+  ctx.ellipse(-16, -20, 12, 7, -0.55, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -192,18 +201,28 @@ export function createPlacesManager({
   group.name = "RMB_PLACES";
   scene.add(group);
 
-  const pinTexture = createPinTexture();
+  const markerTextures = new Map();
   const markerMaterials = new Map();
+
+  function textureForMarker(place) {
+    const color = normalizeColor(place.color, categoryColorHex(place.category));
+    let texture = markerTextures.get(color);
+    if (!texture) {
+      texture = createPinTexture(color);
+      markerTextures.set(color, texture);
+    }
+    return texture;
+  }
 
   function markerMaterial(place) {
     let material = markerMaterials.get(place.id);
 
     if (!material) {
       material = new THREE.SpriteMaterial({
-        map: pinTexture,
-        color: new THREE.Color(place.color || categoryColorHex(place.category)),
+        map: textureForMarker(place),
+        color: 0xffffff,
         transparent: true,
-        opacity: 0.98,
+        opacity: 1,
         depthTest: false,
         depthWrite: false,
         sizeAttenuation: false,
@@ -212,7 +231,9 @@ export function createPlacesManager({
       markerMaterials.set(place.id, material);
     }
 
-    material.color.set(place.color || categoryColorHex(place.category));
+    material.map = textureForMarker(place);
+    material.color.setHex(0xffffff);
+    material.needsUpdate = true;
     return material;
   }
 
@@ -255,7 +276,7 @@ export function createPlacesManager({
     sprite = new THREE.Sprite(markerMaterial(place));
     sprite.name = `Lugar: ${place.name}`;
     sprite.center.set(0.5, 0.06);
-    sprite.scale.set(0.052, 0.068, 1);
+    sprite.scale.set(0.043, 0.056, 1);
     sprite.renderOrder = 900;
     sprite.frustumCulled = false;
     sprite.userData.placeId = place.id;
@@ -301,7 +322,7 @@ export function createPlacesManager({
           ? 1.08
           : 1;
 
-      sprite.scale.set(0.052 * emphasized, 0.068 * emphasized, 1);
+      sprite.scale.set(0.043 * emphasized, 0.056 * emphasized, 1);
       sprite.material.opacity = place.id === selectedId ? 1 : 0.96;
     }
 
@@ -609,7 +630,8 @@ export function createPlacesManager({
     labelSprite.material?.dispose?.();
     for (const material of markerMaterials.values()) material.dispose?.();
     markerMaterials.clear();
-    pinTexture.dispose?.();
+    for (const texture of markerTextures.values()) texture.dispose?.();
+    markerTextures.clear();
     group.clear();
   }
 

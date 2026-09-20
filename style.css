@@ -88,7 +88,7 @@ h1{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:
   -webkit-backdrop-filter:blur(22px) saturate(125%);backdrop-filter:blur(22px) saturate(125%)
 }
 .library-panel{top:15px;left:15px;width:245px;max-height:calc(100% - 270px);display:grid;grid-template-rows:auto minmax(0,1fr)}
-.scene-panel{left:15px;bottom:15px;width:245px;max-height:235px;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.scene-panel{left:15px;bottom:15px;width:245px;max-height:235px;display:grid;grid-template-rows:auto auto minmax(0,1fr)}
 .properties-panel{top:15px;right:15px;width:282px;max-height:calc(100% - 225px);overflow-y:auto}
 .view-panel{left:278px;bottom:15px;width:260px}
 .panel-heading{
@@ -655,7 +655,7 @@ input:disabled{
   }
   .panel.mobile-open{display:grid}
   .library-panel.mobile-open{grid-template-rows:auto minmax(0,1fr)}
-  .scene-panel.mobile-open{grid-template-rows:auto minmax(0,1fr)}
+  .scene-panel.mobile-open{grid-template-rows:auto auto minmax(0,1fr)}
   .properties-panel.mobile-open{display:block;overflow-y:auto}
   .view-panel.mobile-open{display:block}
   .panel-close{display:grid;place-items:center}
@@ -2250,3 +2250,4 @@ select,
     white-space:normal;
   }
 }
+\n\n/* ==========================================================\n   Parte 8.6 · centradores de vista + escena móvil estable\n   ========================================================== */\n.scene-family-select{\n  position:relative;\n  z-index:2;\n  flex:0 0 auto;\n  background:rgba(255,255,255,.93);\n  border-bottom:1px solid rgba(23,23,23,.06);\n}\n.scene-list{position:relative;z-index:1}\n\n.view-centers-editor{display:grid;gap:10px}\n.view-centers-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}\n.view-centers-heading>div{display:grid;gap:2px;min-width:0}\n.view-centers-heading strong{font-size:.66rem}\n.view-centers-heading small{color:#777;font-size:.52rem;line-height:1.4}\n.view-centers-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}\n.view-center-status{\n  min-height:34px;padding:8px 9px;border-radius:9px;background:rgba(0,0,0,.045);\n  color:#696969;font-size:.54rem;line-height:1.4\n}\n.view-center-actions{grid-template-columns:1.3fr .7fr}\n.view-center-list{display:grid;gap:4px}\n.view-center-row{\n  min-height:30px;padding:5px 8px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;\n  border-radius:8px;background:rgba(0,0,0,.035);font-size:.53rem;color:#5d5d5d\n}\n.view-center-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.56rem;color:#3d3d3d}\n.view-center-row span:last-child{color:#858585;font-size:.49rem}\n.view-center-row.configured span:last-child{color:#397849}\n.view-center-export-note{margin:0;color:#888;font-size:.49rem;line-height:1.45}\n\n@media (max-width:760px), (hover:none) and (pointer:coarse){\n  .scene-panel.mobile-open{grid-template-rows:auto auto minmax(0,1fr)!important}\n  .scene-family-select{padding:10px 12px 8px}\n  .scene-list{padding-top:7px}\n  .view-centers-grid{grid-template-columns:1fr}\n  .view-center-actions{grid-template-columns:1fr 1fr}\n  .view-centers-heading small,.view-center-export-note,.view-center-status{font-size:.58rem}\n}\n

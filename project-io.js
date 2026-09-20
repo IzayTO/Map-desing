@@ -1,11 +1,12 @@
 const SCHEMA = "resort-map-builder";
-const VERSION = 7;
+const VERSION = 8;
 const MAX_OBJECTS = 10000;
 const MAX_PLACES = 2000;
 const MAX_ROUTE_NODES = 10000;
 const MAX_ROUTE_EDGES = 30000;
 const MAX_SAVED_ROUTES = 2000;
 const MAX_PATH_CONNECTIONS = 5000;
+const MAX_VIEW_CENTERS = 16;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -196,6 +197,69 @@ function validatePathConnections(input, objects) {
   return result;
 }
 
+
+function validateViewCenters(input, routeNetwork) {
+  const source = input === undefined ? [] : input;
+  if (!Array.isArray(source)) {
+    throw new Error("La lista de centradores de vista no es válida.");
+  }
+  if (source.length > MAX_VIEW_CENTERS) {
+    throw new Error(`El proyecto contiene demasiados centradores (${source.length}).`);
+  }
+
+  const allowed = new Map([
+    ["lindo-50-51", ["lindo", "50-51", "50-51"]],
+    ["lindo-52-55", ["lindo", "52-55", "52-55"]],
+    ["lindo-lobby", ["lindo", "lobby", "Lobby"]],
+    ["maya-60", ["maya", "60", "60"]],
+    ["maya-61-62", ["maya", "61-62", "61-62"]],
+    ["maya-63-64", ["maya", "63-64", "63-64"]],
+    ["maya-65-66", ["maya", "65-66", "65-66"]],
+    ["maya-lobby", ["maya", "lobby", "Lobby"]],
+  ]);
+
+  const nodeIds = new Set((routeNetwork?.nodes || []).map((node) => node.id));
+  const used = new Set();
+  const result = [];
+
+  for (const item of source) {
+    if (!item || typeof item !== "object") continue;
+    const id = cleanText(item.id, "", 80);
+    if (!allowed.has(id) || used.has(id)) continue;
+    used.add(id);
+
+    const [hotel, area, label] = allowed.get(id);
+    const position = vector3(item.position);
+    position[1] = 0;
+    const target = vector3(item.initialView?.target, position);
+    target[1] = 0;
+    const offset = vector3(item.initialView?.cameraOffset, [14, 12, 16]);
+    const nodeId = typeof item.nearestRouteNodeId === "string" && nodeIds.has(item.nearestRouteNodeId)
+      ? item.nearestRouteNodeId
+      : null;
+
+    result.push({
+      id,
+      hotel,
+      area,
+      label,
+      position,
+      nearestRouteNodeId: nodeId,
+      nearestRouteNodeDistanceMeters: nodeId
+        ? Math.max(0, finiteNumber(item.nearestRouteNodeDistanceMeters, 0))
+        : null,
+      initialView: {
+        mode: "aerial-oblique",
+        target,
+        cameraOffset: offset,
+        fov: Math.min(80, Math.max(30, finiteNumber(item.initialView?.fov, 45))),
+      },
+    });
+  }
+
+  return result;
+}
+
 export function createProjectDocument({
   objects,
   settings,
@@ -203,7 +267,10 @@ export function createProjectDocument({
   places = [],
   routeNetwork = { nodes: [], edges: [], routes: [] },
   pathConnections = [],
+  viewCenters = [],
 }) {
+  const validatedRouteNetwork = validateRouteNetwork(input.routeNetwork);
+
   return {
     schema: SCHEMA,
     version: VERSION,
@@ -218,6 +285,7 @@ export function createProjectDocument({
     places,
     routeNetwork,
     pathConnections,
+    viewCenters,
   };
 }
 
@@ -235,7 +303,7 @@ export function validateProjectDocument(
     throw new Error("Este JSON no pertenece a Resort Map Builder.");
   }
 
-  if (![1, 2, 3, 4, 5, 6, VERSION].includes(Number(input.version))) {
+  if (![1, 2, 3, 4, 5, 6, 7, VERSION].includes(Number(input.version))) {
     throw new Error(
       `Versión de proyecto no compatible: ${input.version ?? "desconocida"}.`
     );
@@ -442,8 +510,9 @@ export function validateProjectDocument(
     },
     objects,
     places: validatePlaces(input.places),
-    routeNetwork: validateRouteNetwork(input.routeNetwork),
+    routeNetwork: validatedRouteNetwork,
     pathConnections: validatePathConnections(input.pathConnections, objects),
+    viewCenters: validateViewCenters(input.viewCenters, validatedRouteNetwork),
   };
 }
 

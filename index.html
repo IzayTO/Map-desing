@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.5 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.6 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.5</title>
+  <title>Wizard Map Design parte 8.6</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.5.0" />
+  <link rel="stylesheet" href="./style.css?v=8.6.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.5</h1>
+          <h1>Wizard Map Design parte 8.6</h1>
         </div>
       </div>
 
@@ -771,6 +771,44 @@
 
           <div class="project-divider"></div>
 
+          <section class="view-centers-editor" id="viewCentersEditor">
+            <div class="view-centers-heading">
+              <div>
+                <strong>Centradores de vista</strong>
+                <small>Marca el punto inicial de cada zona para la página de concierge.</small>
+              </div>
+              <button class="project-switch" id="viewCenterVisibleToggle" type="button" role="switch" aria-checked="true">Visibles</button>
+            </div>
+
+            <div class="view-centers-grid">
+              <label class="field field-wide">
+                <span>Hotel</span>
+                <select class="project-select" id="viewCenterHotel">
+                  <option value="lindo">Lindo</option>
+                  <option value="maya">Maya</option>
+                </select>
+              </label>
+              <label class="field field-wide">
+                <span>Edificio / zona</span>
+                <select class="project-select" id="viewCenterArea"></select>
+              </label>
+            </div>
+
+            <div class="view-center-status" id="viewCenterStatus">Todavía no está colocado.</div>
+
+            <div class="project-actions view-center-actions">
+              <button class="project-button primary" id="viewCenterPlace" type="button">⌖ Colocar / reubicar</button>
+              <button class="project-button" id="viewCenterDelete" type="button" disabled>Quitar</button>
+            </div>
+
+            <div class="view-center-list" id="viewCenterList"></div>
+            <p class="view-center-export-note">
+              Al guardar resort.json se exportan hotel, zona, posición, cámara inicial recomendada y el nodo de ruta más cercano.
+            </p>
+          </section>
+
+          <div class="project-divider"></div>
+
           <div class="project-actions">
             <button class="project-button primary" id="saveProject" type="button">
               <span aria-hidden="true">↓</span>
@@ -901,18 +939,18 @@
       <div class="fatal-error" id="fatalError" role="alert">
         <div class="fatal-card">
           <h2>No pudimos iniciar el constructor 3D</h2>
-          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.5 estén en el repositorio.</p>
+          <p id="fatalMessage">Revisa que todos los archivos de Wizard Map Design · Parte 8.6 estén en el repositorio.</p>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.5</span>
+      <span>Wizard Map Design parte 8.6</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.5.0"></script>
+  <script type="module" src="./app.js?v=8.6.0"></script>
 </body>
 </html>

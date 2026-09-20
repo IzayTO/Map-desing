@@ -18,11 +18,12 @@ import {
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.5.0";
+} from "./project-io.js?v=8.6.0";
 import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
-import { createPlacesManager } from "./places.js?v=8.5.0";
+import { createPlacesManager } from "./places.js?v=8.6.0";
 import { createRouteEditor } from "./route-editor.js?v=8.2.0";
-import { isPathObject, createPathConnectionManager } from "./path-connect.js?v=8.5.0";
+import { createViewCentersManager } from "./view-centers.js?v=8.6.0";
+import { isPathObject, createPathConnectionManager } from "./path-connect.js?v=8.6.0";
 
 window.__RMB_READY__ = false;
 
@@ -75,6 +76,7 @@ const saveProjectButton = document.querySelector("#saveProject");
 const loadProjectButton = document.querySelector("#loadProject");
 const projectFileInput = document.querySelector("#projectFileInput");
 const projectMessage = document.querySelector("#projectMessage");
+const projectPanel = document.querySelector("#projectPanel");
 
 const fatalError = document.querySelector("#fatalError");
 const fatalMessage = document.querySelector("#fatalMessage");
@@ -247,6 +249,7 @@ let oneSidedScaleController;
 let axisOverlay;
 let placesManager;
 let routeEditor;
+let viewCenterManager;
 let pathConnectionManager;
 let multiScaleProxy;
 let overlayDirty = true;
@@ -1970,6 +1973,7 @@ function captureHistorySnapshot() {
     places: placesManager?.serialize?.() || [],
     routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
     pathConnections: pathConnectionManager?.serialize?.() || [],
+    viewCenters: viewCenterManager?.serialize?.() || [],
     nextBuildingNumber: state.nextBuildingNumber,
     nextPropNumbers: { ...state.nextPropNumbers },
     selectedId: state.selected?.userData?.id || null,
@@ -2021,6 +2025,7 @@ function applyHistorySnapshot(snapshot) {
   placesManager?.restore?.(snapshot.places || []);
   routeEditor?.restore?.(snapshot.routeNetwork || { nodes: [], edges: [], routes: [] });
   pathConnectionManager?.restore?.(snapshot.pathConnections || [], state.objects);
+  viewCenterManager?.restore?.(snapshot.viewCenters || []);
   state.nextBuildingNumber = snapshot.nextBuildingNumber || 1;
   state.nextPropNumbers = { ...(snapshot.nextPropNumbers || {}) };
   const selected = state.objects.find((item) => item.userData.id === snapshot.selectedId);
@@ -2054,7 +2059,9 @@ function redoHistory() {
 
 function updateSpecialModeToolbar(section, mode = "idle", message = "") {
   if (!specialModeToolbar) return;
-  const visible = state.editSection === section && mode !== "idle";
+  const visible = mode !== "idle" && (
+    section === "viewCenters" || state.editSection === section
+  );
   specialModeToolbar.classList.toggle("hidden", !visible);
 
   if (visible && specialModeText) {
@@ -2064,7 +2071,9 @@ function updateSpecialModeToolbar(section, mode = "idle", message = "") {
         ? "Selección múltiple"
         : section === "places"
           ? "Editando lugar"
-          : "Editando rutas");
+          : section === "viewCenters"
+            ? "Colocando centrador de vista"
+            : "Editando rutas");
   }
 
   if (specialModeCancelButton) {
@@ -2128,6 +2137,7 @@ function updateEditorSectionUi() {
 
 function setEditSection(section) {
   if (!["objects", "places", "routes"].includes(section)) return;
+  viewCenterManager?.cancelInteraction?.();
   if (state.editSection === section) {
     updateEditorSectionUi();
     return;
@@ -2160,6 +2170,9 @@ function snapSpecialPoint(point) {
 }
 
 function handleSpecialEditorTap(event) {
+  if (viewCenterManager?.isInteracting?.()) {
+    return viewCenterManager.handleTap(event, groundPointFromEvent(event));
+  }
   if (state.editSection === "places") {
     return placesManager?.handleTap?.(event, groundPointFromEvent(event)) ?? true;
   }
@@ -2315,6 +2328,7 @@ function serializeProject() {
     places: placesManager?.serialize?.() || [],
     routeNetwork: routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
     pathConnections: pathConnectionManager?.serialize?.() || [],
+    viewCenters: viewCenterManager?.serialize?.() || [],
   });
 }
 
@@ -2575,6 +2589,7 @@ function restoreProject(project) {
   placesManager?.restore?.(project.places || []);
   routeEditor?.restore?.(project.routeNetwork || { nodes: [], edges: [], routes: [] });
   pathConnectionManager?.restore?.(project.pathConnections || [], state.objects);
+  viewCenterManager?.restore?.(project.viewCenters || []);
   state.editSection = "objects";
   updateEditorSectionUi();
 
@@ -2748,6 +2763,22 @@ function createScene() {
     },
     onInteractionChange: (mode, message) => {
       updateSpecialModeToolbar("routes", mode, message);
+    },
+  });
+
+  viewCenterManager = createViewCentersManager({
+    scene,
+    camera,
+    renderer,
+    panel: projectPanel,
+    snapPoint: snapSpecialPoint,
+    getRouteNetwork: () => routeEditor?.serialize?.() || { nodes: [], edges: [], routes: [] },
+    onMutate: recordHistory,
+    onInteractionChange: (mode, message) => {
+      updateSpecialModeToolbar("viewCenters", mode, message);
+      if (mode !== "idle" && mobilePanels?.isMobile()) {
+        mobilePanels.closePanels();
+      }
     },
   });
 
@@ -4431,6 +4462,10 @@ function installEvents() {
   specialModeCancelButton?.addEventListener("click", () => {
     if (state.editSection === "objects" && state.multiSelectCollecting) {
       finishMultiSelectMode();
+      return;
+    }
+    if (viewCenterManager?.isInteracting?.()) {
+      viewCenterManager.cancelInteraction();
       return;
     }
     if (state.editSection === "places") placesManager?.cancelInteraction?.();

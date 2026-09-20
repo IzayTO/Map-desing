@@ -39,8 +39,11 @@ function endpointDescriptor(object, sign) {
   object.updateWorldMatrix(true, true);
 
   const scaleX = Math.max(EPS, Math.abs(finite(object.scale.x, 1)));
-  const overlapWorld = Math.min(0.24, Math.max(0.10, base.z * Math.abs(finite(object.scale.z, 1)) * 0.10));
-  const overlapLocal = Math.min(base.x * 0.20, overlapWorld / scaleX);
+  const widthWorld = base.z * Math.abs(finite(object.scale.z, 1));
+  // Cubrimos una franja generosa de ambos caminos para tapar las líneas
+  // internas del extremo y convertir la unión en una sola superficie visual.
+  const overlapWorld = Math.min(1.35, Math.max(0.52, widthWorld * 0.72));
+  const overlapLocal = Math.min(base.x * 0.42, overlapWorld / scaleX);
 
   const endX = sign * base.x * 0.5;
   const insideX = sign * Math.max(0, base.x * 0.5 - overlapLocal);
@@ -211,33 +214,20 @@ function buildBridgeMesh(a, b) {
   }
 
   const allTopY = [...nearest.a.top, ...nearest.b.top].map((p) => p.y);
-  const allBottomY = [...nearest.a.bottom, ...nearest.b.bottom].map((p) => p.y);
 
-  // A tiny lift hides coplanar seams/z-fighting without becoming visible as a step.
-  const topY = Math.max(...allTopY) + 0.0035;
-  const bottomY = Math.min(...allBottomY);
+  // La 8.6 usa una tapa única, horizontal y muy ligeramente elevada.
+  // No hay paredes laterales en la pieza de unión, por lo que desaparece
+  // el trapecio sombreado que delataba la pieza en 8.5.
+  const topY = Math.max(...allTopY) + 0.0022;
   const n = hull.length;
   const positions = [];
   const indices = [];
 
   for (const p of hull) positions.push(p.x, topY, p.z);
-  for (const p of hull) positions.push(p.x, bottomY, p.z);
 
-  // Hull is CCW in X/Z. Reverse top winding so normal points +Y.
+  // El hull está en sentido antihorario X/Z. Invertimos el abanico para +Y.
   for (let i = 1; i < n - 1; i += 1) {
     indices.push(0, i + 1, i);
-  }
-
-  // Bottom.
-  for (let i = 1; i < n - 1; i += 1) {
-    indices.push(n, n + i, n + i + 1);
-  }
-
-  // Walls.
-  for (let i = 0; i < n; i += 1) {
-    const j = (i + 1) % n;
-    indices.push(i, j, n + j);
-    indices.push(i, n + j, n + i);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -250,9 +240,15 @@ function buildBridgeMesh(a, b) {
   geometry.computeBoundingSphere();
 
   const material = sourcePathMaterial(a);
+  material.side = THREE.DoubleSide;
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -5;
+  material.polygonOffsetUnits = -5;
+  material.needsUpdate = true;
+
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "RMB_PATH_CONNECTION_PATCH";
-  mesh.renderOrder = 40;
+  mesh.renderOrder = 60;
   mesh.frustumCulled = false;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
@@ -262,7 +258,7 @@ function buildBridgeMesh(a, b) {
   return {
     ok: true,
     mesh,
-    message: "Unión creada. Los dos caminos se conservan y la pieza central cubre el hueco o el solape.",
+    message: "Unión visual creada. La tapa continua cubre el hueco y las líneas internas sin recortar ninguno de los dos caminos.",
   };
 }
 
