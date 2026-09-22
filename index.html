@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f4f4ef" />
   <meta
     name="description"
-    content="Wizard Map Design · Parte 8.7 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
+    content="Wizard Map Design · Parte 8.8 · constructor 3D con lugares, red de rutas y herramientas avanzadas de rotación."
   />
-  <title>Wizard Map Design parte 8.7</title>
+  <title>Wizard Map Design parte 8.8</title>
 
   <!-- v4.1 evita que Safari/GitHub Pages reutilicen el CSS viejo -->
-  <link rel="stylesheet" href="./style.css?v=8.7.0" />
+  <link rel="stylesheet" href="./style.css?v=8.8.0" />
 
   <script type="importmap">
   {
@@ -30,7 +30,7 @@
         <div class="brand-mark" aria-hidden="true">WM</div>
         <div class="brand-copy">
           <p class="eyebrow">Wizard Map Design</p>
-          <h1>Wizard Map Design parte 8.7</h1>
+          <h1>Wizard Map Design parte 8.8</h1>
         </div>
       </div>
 
@@ -286,7 +286,16 @@
             <span class="library-section-title">Superficies</span>
             <div class="library-grid">
               <button class="library-item compact" type="button" data-create="path">
-                <span class="surface-swatch path-swatch" aria-hidden="true"></span><span><strong>Camino</strong></span>
+                <span class="surface-swatch path-swatch" aria-hidden="true"></span><span><strong>Camino recto</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="pathRoundabout">
+                <span class="library-glyph" aria-hidden="true">◎</span><span><strong>Rotonda</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="pathCurve">
+                <span class="library-glyph" aria-hidden="true">◜</span><span><strong>Curvo</strong></span>
+              </button>
+              <button class="library-item compact" type="button" data-create="pathWave">
+                <span class="library-glyph" aria-hidden="true">∿</span><span><strong>Ondulado</strong></span>
               </button>
               <button class="library-item compact" type="button" data-create="water">
                 <span class="surface-swatch water-swatch" aria-hidden="true"></span><span><strong>Agua</strong></span>
@@ -491,6 +500,47 @@
                 </span>
                 <input id="stairSteps" type="range" min="3" max="30" step="1" value="10" />
               </label>
+            </div>
+
+            <div id="pathParametricFields" class="hidden">
+              <div class="section-label">Camino</div>
+
+              <label class="field field-wide">
+                <span>Tipo de camino</span>
+                <select id="pathVariant" class="editor-select">
+                  <option value="straight">Recto</option>
+                  <option value="roundabout">Rotonda / anillo</option>
+                  <option value="curve">Curva</option>
+                  <option value="wave">Ondulado</option>
+                </select>
+              </label>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Ancho · m</span>
+                  <input id="pathWidth" type="number" min="0.35" max="8" step="0.1" inputmode="decimal" />
+                </label>
+                <label class="field hidden" id="pathRadiusField">
+                  <span>Radio · m</span>
+                  <input id="pathRadius" type="number" min="1" max="24" step="0.1" inputmode="decimal" />
+                </label>
+                <label class="field hidden" id="pathAngleField">
+                  <span>Curva · °</span>
+                  <input id="pathAngle" type="number" min="15" max="330" step="5" inputmode="decimal" />
+                </label>
+                <label class="field hidden" id="pathAmplitudeField">
+                  <span>Ondulación · m</span>
+                  <input id="pathAmplitude" type="number" min="0.15" max="8" step="0.1" inputmode="decimal" />
+                </label>
+                <label class="field hidden" id="pathWavesField">
+                  <span>N.º de ondas</span>
+                  <input id="pathWaves" type="number" min="0.5" max="4" step="0.25" inputmode="decimal" />
+                </label>
+              </div>
+
+              <p class="multi-selection-help">
+                Las dimensiones X/Z siguen escalando la pieza completa. El ancho, radio y curvatura cambian la geometría real del camino.
+              </p>
             </div>
 
             <div class="section-label">Posición</div>
@@ -964,12 +1014,12 @@
     </main>
 
     <footer class="footer">
-      <span>Wizard Map Design parte 8.7</span>
+      <span>Wizard Map Design parte 8.8</span>
       <span id="selectionStatus">Ningún objeto seleccionado</span>
     </footer>
   </div>
 
   <!-- v4.1 evita caché viejo en Safari/GitHub Pages -->
-  <script type="module" src="./app.js?v=8.7.0"></script>
+  <script type="module" src="./app.js?v=8.8.0"></script>
 </body>
 </html>

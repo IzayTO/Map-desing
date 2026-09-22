@@ -7,6 +7,11 @@ export function isPathObject(object) {
   return object?.userData?.propType === "path";
 }
 
+export function isStraightPathObject(object) {
+  return isPathObject(object) &&
+    (object?.userData?.params?.variant || "straight") === "straight";
+}
+
 function makeId(prefix) {
   if (globalThis.crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -294,7 +299,7 @@ export function createPathConnectionManager({ scene }) {
   function objectsForRecord(record) {
     const a = objectLookup.get(record.a);
     const b = objectLookup.get(record.b);
-    if (!isPathObject(a) || !isPathObject(b)) return null;
+    if (!isStraightPathObject(a) || !isStraightPathObject(b)) return null;
     return [a, b];
   }
 
@@ -327,6 +332,14 @@ export function createPathConnectionManager({ scene }) {
   function connect(a, b, objects = []) {
     if (!isPathObject(a) || !isPathObject(b) || a === b) {
       return { ok: false, changed: false, message: "Selecciona exactamente dos caminos distintos." };
+    }
+
+    if (!isStraightPathObject(a) || !isStraightPathObject(b)) {
+      return {
+        ok: false,
+        changed: false,
+        message: "La unión automática es solo para caminos rectos. Las curvas, rotondas y ondulados ya tienen su propia geometría.",
+      };
     }
 
     if (records.length >= MAX_CONNECTIONS) {
@@ -441,7 +454,7 @@ export function createPathConnectionManager({ scene }) {
       const a = typeof item.a === "string" ? item.a : "";
       const b = typeof item.b === "string" ? item.b : "";
       if (!a || !b || a === b) continue;
-      if (!isPathObject(objectLookup.get(a)) || !isPathObject(objectLookup.get(b))) continue;
+      if (!isStraightPathObject(objectLookup.get(a)) || !isStraightPathObject(objectLookup.get(b))) continue;
 
       const key = pairKey(a, b);
       if (usedPairs.has(key)) continue;

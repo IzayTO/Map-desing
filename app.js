@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=8.0.0";
+import { PROP_CATALOG, createProp, updateParametricProp, disposePropLibrary } from "./props.js?v=8.8.0";
 import { setupMobilePanels } from "./ui.js?v=8.0.0";
 import { createPlacementController } from "./placement.js?v=8.0.0";
 import { setupDesktopControls } from "./desktop-controls.js?v=8.0.0";
@@ -18,12 +18,12 @@ import {
   validateProjectDocument,
   downloadProjectJson,
   readProjectJson,
-} from "./project-io.js?v=8.6.1";
+} from "./project-io.js?v=8.8.0";
 import { createAxisOverlay } from "./axis-overlay.js?v=8.2.0";
 import { createPlacesManager } from "./places.js?v=8.6.0";
 import { createRouteEditor } from "./route-editor.js?v=8.2.0";
 import { createViewCentersManager } from "./view-centers.js?v=8.6.0";
-import { isPathObject, createPathConnectionManager } from "./path-connect.js?v=8.6.0";
+import { isPathObject, isStraightPathObject, createPathConnectionManager } from "./path-connect.js?v=8.8.0";
 
 window.__RMB_READY__ = false;
 
@@ -102,6 +102,18 @@ const uniformSizeValue = document.querySelector("#uniformSizeValue");
 const parametricFields = document.querySelector("#parametricFields");
 const stairStepsInput = document.querySelector("#stairSteps");
 const stairStepsValue = document.querySelector("#stairStepsValue");
+
+const pathParametricFields = document.querySelector("#pathParametricFields");
+const pathVariantInput = document.querySelector("#pathVariant");
+const pathWidthInput = document.querySelector("#pathWidth");
+const pathRadiusInput = document.querySelector("#pathRadius");
+const pathAngleInput = document.querySelector("#pathAngle");
+const pathAmplitudeInput = document.querySelector("#pathAmplitude");
+const pathWavesInput = document.querySelector("#pathWaves");
+const pathRadiusField = document.querySelector("#pathRadiusField");
+const pathAngleField = document.querySelector("#pathAngleField");
+const pathAmplitudeField = document.querySelector("#pathAmplitudeField");
+const pathWavesField = document.querySelector("#pathWavesField");
 
 const positionXInput = document.querySelector("#positionX");
 const positionYInput = document.querySelector("#positionY");
@@ -487,7 +499,7 @@ function selectedPathPair() {
   }
 
   const [a, b] = state.multiSelected;
-  if (!isPathObject(a) || !isPathObject(b)) {
+  if (!isStraightPathObject(a) || !isStraightPathObject(b)) {
     return null;
   }
 
@@ -1349,6 +1361,48 @@ function isParametricStairs(object) {
   return Boolean(
     object?.userData?.parametric === "stairs"
   );
+}
+
+function isParametricPath(object) {
+  return Boolean(
+    object?.userData?.propType === "path" &&
+    object?.userData?.parametric === "path"
+  );
+}
+
+function isParametricObject(object) {
+  return Boolean(object?.userData?.parametric);
+}
+
+const PATH_PLACEMENT_PRESETS = Object.freeze({
+  pathRoundabout: {
+    variant: "roundabout",
+    label: "Rotonda",
+    name: "Rotonda",
+  },
+  pathCurve: {
+    variant: "curve",
+    label: "Camino curvo",
+    name: "Camino curvo",
+  },
+  pathWave: {
+    variant: "wave",
+    label: "Camino ondulado",
+    name: "Camino ondulado",
+  },
+});
+
+function pathPlacementPreset(type) {
+  return PATH_PLACEMENT_PRESETS[type] || null;
+}
+
+function nextSpecialPathName(type) {
+  const preset = pathPlacementPreset(type);
+  if (!preset) return nextPropName("path");
+
+  const current = (state.nextPropNumbers[type] || 0) + 1;
+  state.nextPropNumbers[type] = current;
+  return `${preset.name} ${current}`;
 }
 
 function canUseOneSidedScale(object) {
@@ -2530,7 +2584,7 @@ function restoreProjectObject(record) {
 
   if (
     record.params &&
-    isParametricStairs(object)
+    isParametricObject(object)
   ) {
     updateParametricProp(
       object,
@@ -3219,6 +3273,7 @@ function createEditorProp(type, {
   scale = 1,
   select = true,
   name = null,
+  params = null,
 } = {}) {
   const object = createProp(type);
   object.userData.id = makeId(type);
@@ -3226,6 +3281,11 @@ function createEditorProp(type, {
   object.userData.opacity = 1;
   object.userData.mirror = { x: false, y: false, z: false };
   object.name = name || nextPropName(type);
+
+  if (params && isParametricObject(object)) {
+    updateParametricProp(object, params);
+  }
+
   object.position.set(
     x,
     Number(object.userData.defaultY) || 0,
@@ -3251,6 +3311,9 @@ function placementTypeLabel(type) {
   if (type === "building") {
     return "Edificio";
   }
+
+  const preset = pathPlacementPreset(type);
+  if (preset) return preset.label;
 
   return PROP_CATALOG[type]?.label || "Objeto";
 }
@@ -3281,6 +3344,19 @@ function createObjectAt(type, point, { select = false } = {}) {
       y: 1.5,
       z: point.z,
       select,
+    });
+  }
+
+  const pathPreset = pathPlacementPreset(type);
+  if (pathPreset) {
+    return createEditorProp("path", {
+      x: point.x,
+      z: point.z,
+      select,
+      name: nextSpecialPathName(type),
+      params: {
+        variant: pathPreset.variant,
+      },
     });
   }
 
@@ -3381,7 +3457,7 @@ function duplicateSelectedObject() {
 
   if (
     source.userData.params &&
-    isParametricStairs(clone)
+    isParametricObject(clone)
   ) {
     updateParametricProp(
       clone,
@@ -3719,6 +3795,7 @@ function updatePropertiesFromSelection() {
     hideAlignmentGuides();
     updateOneSidedScaleUi();
     parametricFields.classList.add("hidden");
+    pathParametricFields?.classList.add("hidden");
     updateMirrorUi();
     updateRotationAxisUi();
     return;
@@ -3739,10 +3816,32 @@ function updatePropertiesFromSelection() {
 
   const uniform = isUniformObject(object);
   const stairs = isParametricStairs(object);
+  const parametricPath = isParametricPath(object);
 
   dimensionFields.classList.toggle("hidden", uniform);
   uniformSizeFields.classList.toggle("hidden", !uniform);
   parametricFields.classList.toggle("hidden", !stairs);
+  pathParametricFields?.classList.toggle("hidden", !parametricPath);
+
+  if (parametricPath) {
+    const params = object.userData.params || {};
+    const variant = ["straight", "roundabout", "curve", "wave"].includes(params.variant)
+      ? params.variant
+      : "straight";
+
+    pathVariantInput.value = variant;
+    pathWidthInput.value = round2(Number(params.width) || 1.6);
+    pathRadiusInput.value = round2(Number(params.radius) || 3.2);
+    pathAngleInput.value = round2(Number(params.angle) || 90);
+    pathAmplitudeInput.value = round2(Number(params.amplitude) || 1.45);
+    pathWavesInput.value = round2(Number(params.waves) || 1.25);
+
+    const showRadius = variant === "roundabout" || variant === "curve";
+    pathRadiusField?.classList.toggle("hidden", !showRadius);
+    pathAngleField?.classList.toggle("hidden", variant !== "curve");
+    pathAmplitudeField?.classList.toggle("hidden", variant !== "wave");
+    pathWavesField?.classList.toggle("hidden", variant !== "wave");
+  }
 
   if (stairs) {
     const steps =
@@ -3803,6 +3902,12 @@ function updatePropertiesFromSelection() {
     depthInput,
     uniformSizeInput,
     stairStepsInput,
+    pathVariantInput,
+    pathWidthInput,
+    pathRadiusInput,
+    pathAngleInput,
+    pathAmplitudeInput,
+    pathWavesInput,
     positionXInput,
     positionYInput,
     positionZInput,
@@ -3984,6 +4089,43 @@ function applyStairSteps(value) {
 
   rebuildObjectOutlines(object);
   updateSelectionBox();
+}
+
+function applyPathParamsFromInputs() {
+  const object = state.selected;
+
+  if (
+    !object ||
+    isLocked(object) ||
+    !isParametricPath(object)
+  ) {
+    return false;
+  }
+
+  const previousVariant = object.userData.params?.variant || "straight";
+  const nextParams = {
+    variant: pathVariantInput.value,
+    width: numberOrFallback(pathWidthInput.value, object.userData.params?.width || 1.6),
+    radius: numberOrFallback(pathRadiusInput.value, object.userData.params?.radius || 3.2),
+    angle: numberOrFallback(pathAngleInput.value, object.userData.params?.angle || 90),
+    amplitude: numberOrFallback(pathAmplitudeInput.value, object.userData.params?.amplitude || 1.45),
+    waves: numberOrFallback(pathWavesInput.value, object.userData.params?.waves || 1.25),
+  };
+
+  const opacity = getObjectOpacity(object);
+
+  if (previousVariant === "straight" && nextParams.variant !== "straight") {
+    pathConnectionManager?.removeForObject?.(object);
+  }
+
+  updateParametricProp(object, nextParams);
+  setObjectOpacity(object, opacity);
+  applySelectionConstraints();
+  rebuildObjectOutlines(object);
+  updateSelectionBox();
+  updatePropertiesFromSelection();
+  refreshSceneList();
+  return true;
 }
 
 function pointerToNdc(event) {
@@ -4564,6 +4706,22 @@ function installEvents() {
     }
   );
   stairStepsInput.addEventListener("change", () => recordHistory("Editar escalera"));
+
+  pathVariantInput?.addEventListener("change", () => {
+    if (applyPathParamsFromInputs()) recordHistory("Cambiar tipo de camino");
+  });
+
+  for (const input of [
+    pathWidthInput,
+    pathRadiusInput,
+    pathAngleInput,
+    pathAmplitudeInput,
+    pathWavesInput,
+  ].filter(Boolean)) {
+    input.addEventListener("change", () => {
+      if (applyPathParamsFromInputs()) recordHistory("Editar camino");
+    });
+  }
 
   duplicateButton.addEventListener("click", duplicateSelectedObject);
   deleteButton.addEventListener("click", deleteSelectedObject);

@@ -260,6 +260,38 @@ function validateViewCenters(input, routeNetwork) {
   return result;
 }
 
+function sanitizedObjectParams(item) {
+  if (!item?.params || typeof item.params !== "object") return null;
+
+  if (item.propType === "path") {
+    const allowed = new Set(["straight", "roundabout", "curve", "wave"]);
+    return {
+      variant: allowed.has(item.params.variant) ? item.params.variant : "straight",
+      width: Math.min(8, Math.max(0.35, finiteNumber(item.params.width, 1.6))),
+      radius: Math.min(24, Math.max(1, finiteNumber(item.params.radius, 3.2))),
+      angle: Math.min(330, Math.max(15, finiteNumber(item.params.angle, 90))),
+      amplitude: Math.min(8, Math.max(0.15, finiteNumber(item.params.amplitude, 1.45))),
+      waves: Math.min(4, Math.max(0.5, finiteNumber(item.params.waves, 1.25))),
+    };
+  }
+
+  if (["stairsStraight", "stairsL", "stairsU"].includes(item.propType)) {
+    return {
+      steps: Math.min(
+        30,
+        Math.max(
+          3,
+          Math.round(
+            finiteNumber(item.params.steps, 10)
+          )
+        )
+      ),
+    };
+  }
+
+  return null;
+}
+
 export function createProjectDocument({
   objects,
   settings,
@@ -383,20 +415,7 @@ export function validateProjectDocument(
         1,
         Math.max(0, finiteNumber(item.outlineStrength, 0.4))
       ),
-      params:
-        item.params && typeof item.params === "object"
-          ? {
-              steps: Math.min(
-                30,
-                Math.max(
-                  3,
-                  Math.round(
-                    finiteNumber(item.params.steps, 10)
-                  )
-                )
-              ),
-            }
-          : null,
+      params: sanitizedObjectParams(item),
     };
   });
 

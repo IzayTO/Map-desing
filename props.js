@@ -244,6 +244,7 @@ export const PROP_CATALOG = Object.freeze({
     kind: "surface",
     scalePolicy: "free",
     defaultName: "Camino",
+    parametric: "path",
   },
   water: {
     label: "Agua",
@@ -462,6 +463,10 @@ function centerChildrenXZ(root) {
 function clearParametricChildren(root) {
   for (const child of [...root.children]) {
     child.traverse((nested) => {
+      if (nested.geometry && nested.userData.editorGeometryLocal) {
+        nested.geometry.dispose?.();
+      }
+
       if (
         nested.material &&
         nested.userData.editorMaterialLocal
@@ -783,23 +788,196 @@ function makeArchedBridge() {
   return root;
 }
 
-function makePath() {
-  const root = prepareRoot("path");
+const PATH_DEFAULT_PARAMS = Object.freeze({
+  variant: "straight",
+  width: 1.6,
+  radius: 3.2,
+  angle: 90,
+  amplitude: 1.45,
+  waves: 1.25,
+});
 
-  addBox(root, {
-    y: 0.04,
-    sx: 5.5,
-    sy: 0.08,
-    sz: 1.6,
-    material: M.path,
-  });
+function normalizePathParams(params = {}) {
+  const allowed = new Set(["straight", "roundabout", "curve", "wave"]);
+  const variant = allowed.has(params.variant) ? params.variant : "straight";
 
-  root.userData.baseDimensions = {
-    x: 5.5,
-    y: 0.08,
-    z: 1.6,
+  return {
+    variant,
+    width: THREE.MathUtils.clamp(Number(params.width) || PATH_DEFAULT_PARAMS.width, 0.35, 8),
+    radius: THREE.MathUtils.clamp(Number(params.radius) || PATH_DEFAULT_PARAMS.radius, 1, 24),
+    angle: THREE.MathUtils.clamp(Number(params.angle) || PATH_DEFAULT_PARAMS.angle, 15, 330),
+    amplitude: THREE.MathUtils.clamp(Number(params.amplitude) || PATH_DEFAULT_PARAMS.amplitude, 0.15, 8),
+    waves: THREE.MathUtils.clamp(Number(params.waves) || PATH_DEFAULT_PARAMS.waves, 0.5, 4),
+  };
+}
+
+function makeRibbonGeometry(points, width = 1.6, thickness = 0.08, closed = false) {
+  const source = points.map((point) => ({
+    x: Number(point.x) || 0,
+    z: Number(point.z) || 0,
+  }));
+
+  if (source.length < 2) {
+    source.push({ x: 1, z: 0 });
+  }
+
+  const half = Math.max(0.02, width * 0.5);
+  const positions = [];
+  const indices = [];
+  const count = source.length;
+
+  const tangentFor = (index) => {
+    const previous = closed
+      ? source[(index - 1 + count) % count]
+      : source[Math.max(0, index - 1)];
+    const next = closed
+      ? source[(index + 1) % count]
+      : source[Math.min(count - 1, index + 1)];
+
+    let tx = next.x - previous.x;
+    let tz = next.z - previous.z;
+    const length = Math.hypot(tx, tz) || 1;
+    tx /= length;
+    tz /= length;
+    return { x: tx, z: tz };
   };
 
+  for (let i = 0; i < count; i += 1) {
+    const point = source[i];
+    const tangent = tangentFor(i);
+    const nx = -tangent.z;
+    const nz = tangent.x;
+    const leftX = point.x + nx * half;
+    const leftZ = point.z + nz * half;
+    const rightX = point.x - nx * half;
+    const rightZ = point.z - nz * half;
+
+    positions.push(
+      leftX, 0, leftZ,
+      rightX, 0, rightZ,
+      leftX, thickness, leftZ,
+      rightX, thickness, rightZ
+    );
+  }
+
+  const segments = closed ? count : count - 1;
+
+  for (let i = 0; i < segments; i += 1) {
+    const j = (i + 1) % count;
+    const lb = i * 4;
+    const rb = lb + 1;
+    const lt = lb + 2;
+    const rt = lb + 3;
+    const lb2 = j * 4;
+    const rb2 = lb2 + 1;
+    const lt2 = lb2 + 2;
+    const rt2 = lb2 + 3;
+
+    // top
+    indices.push(lt, lt2, rt, rt, lt2, rt2);
+    // bottom
+    indices.push(lb, rb, lb2, rb, rb2, lb2);
+    // left edge
+    indices.push(lb, lb2, lt, lt, lb2, lt2);
+    // right edge
+    indices.push(rb, rt, rb2, rt, rt2, rb2);
+  }
+
+  if (!closed) {
+    const start = 0;
+    const end = (count - 1) * 4;
+    indices.push(start, start + 2, start + 1, start + 1, start + 2, start + 3);
+    indices.push(end, end + 1, end + 2, end + 1, end + 3, end + 2);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  return geometry;
+}
+
+function addGeneratedPathMesh(root, geometry) {
+  const item = mesh(geometry, M.path);
+  item.userData.editorGeometryLocal = true;
+  root.add(item);
+  return item;
+}
+
+function buildParametricPath(root, params = {}) {
+  const next = normalizePathParams(params);
+  const thickness = 0.08;
+  let geometry;
+
+  if (next.variant === "straight") {
+    geometry = makeRibbonGeometry(
+      [
+        { x: -2.75, z: 0 },
+        { x: 2.75, z: 0 },
+      ],
+      next.width,
+      thickness,
+      false
+    );
+  }
+
+  if (next.variant === "roundabout") {
+    const count = 80;
+    const points = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      points.push({
+        x: Math.cos(angle) * next.radius,
+        z: Math.sin(angle) * next.radius,
+      });
+    }
+    geometry = makeRibbonGeometry(points, next.width, thickness, true);
+  }
+
+  if (next.variant === "curve") {
+    const angleRadians = THREE.MathUtils.degToRad(next.angle);
+    const count = Math.max(18, Math.ceil(next.angle / 4));
+    const points = [];
+    for (let i = 0; i <= count; i += 1) {
+      const t = i / count;
+      const angle = -angleRadians * 0.5 + angleRadians * t;
+      points.push({
+        x: Math.sin(angle) * next.radius,
+        z: Math.cos(angle) * next.radius,
+      });
+    }
+    geometry = makeRibbonGeometry(points, next.width, thickness, false);
+  }
+
+  if (next.variant === "wave") {
+    const length = 8;
+    const count = 72;
+    const points = [];
+    for (let i = 0; i <= count; i += 1) {
+      const t = i / count;
+      points.push({
+        x: -length * 0.5 + length * t,
+        z: Math.sin(t * Math.PI * 2 * next.waves) * next.amplitude,
+      });
+    }
+    geometry = makeRibbonGeometry(points, next.width, thickness, false);
+  }
+
+  addGeneratedPathMesh(
+    root,
+    geometry || makeRibbonGeometry([{ x: -2.75, z: 0 }, { x: 2.75, z: 0 }], next.width, thickness)
+  );
+
+  centerChildrenXZ(root);
+  root.userData.params = next;
+}
+
+function makePath() {
+  const root = prepareRoot("path");
+  root.userData.params = { ...PATH_DEFAULT_PARAMS };
+  buildParametricPath(root, root.userData.params);
+  updateBaseDimensions(root);
   return root;
 }
 
@@ -1246,7 +1424,22 @@ const FACTORIES = {
 };
 
 export function updateParametricProp(root, params = {}) {
-  if (!root || root.userData.parametric !== "stairs") {
+  if (!root || !root.userData.parametric) {
+    return false;
+  }
+
+  if (root.userData.parametric === "path") {
+    clearParametricChildren(root);
+    buildParametricPath(root, {
+      ...(root.userData.params || PATH_DEFAULT_PARAMS),
+      ...params,
+    });
+    updateBaseDimensions(root);
+    tagEditorRoot(root);
+    return true;
+  }
+
+  if (root.userData.parametric !== "stairs") {
     return false;
   }
 
